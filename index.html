@@ -2872,8 +2872,9 @@ document.addEventListener("click", function(e){
     var row = RM.state()[k][i];
     var label = row.code || row.num || row.name || "this row";
     if (confirm("Delete "+label+"?")){
-      RM.deleteRow(k, i);
-      EDIT = { table:null, index:-1, isNew:false };
+     RM.deleteRow(k, i);
+saveRulesToStorage();
+EDIT = { table:null, index:-1, isNew:false };
       renderAllRules();
     }
     return;
@@ -2902,7 +2903,8 @@ document.addEventListener("click", function(e){
     }
 
     if (at === -1) RM.addRow(key, obj); else RM.updateRow(key, at, obj);
-    EDIT = { table:null, index:-1, isNew:false };
+saveRulesToStorage();
+EDIT = { table:null, index:-1, isNew:false };
     renderAllRules();
     return;
   }
@@ -2938,7 +2940,30 @@ if ($("rf-active")) $("rf-active").addEventListener("change", function(){ render
   var el = $(p[0]);
   if (el) el.setAttribute("data-add", p[1]);
 });
+/* ---------- localStorage persistence ---------- */
+function saveRulesToStorage(){
+  try {
+    localStorage.setItem('riskControlRules', JSON.stringify(RM.state()));
+  } catch(e) {
+    console.warn('Could not save to localStorage:', e);
+  }
+}
 
+function loadRulesFromStorage(){
+  try {
+    var saved = localStorage.getItem('riskControlRules');
+    if (saved){
+      var data = JSON.parse(saved);
+      RM.init(data);
+      LOADED_SNAPSHOT = JSON.parse(JSON.stringify(data));
+      $("r-src").textContent = "Restored from browser storage";
+      return true;
+    }
+  } catch(e) {
+    console.warn('Could not load from localStorage:', e);
+  }
+  return false;
+}
 /* ---------- export / import / revert ---------- */
 async function exportRules(){
   var btn = $("r-export");
@@ -2997,6 +3022,11 @@ window.addEventListener("beforeunload", function(e){
 
 /* boot */
 renderNav();
+// Try to load saved rules from browser storage
+if (!loadRulesFromStorage()) {
+  // If no saved data, render with default data
+  renderAllRules();
+}
 
 
 </script>
