@@ -1,0 +1,3004 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Risk Control — TMX Routine</title>
+<style>
+:root{
+  --ink:#1C1A24; --slate:#565064; --mute:#8A8397;
+  --paper:#FBFAFC; --panel:#FFFFFF; --rule:#E1DDE8;
+  --violet:#7030A0; --violet-soft:#F1E9F7; --blue:#1F4E79;
+  --flag:#B4262F; --flag-soft:#FBEAEB; --warn:#9A6B10; --ok:#2C6E52;
+  --sans:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,"Cascadia Mono","Segoe UI Mono",Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:var(--sans);background:var(--paper);color:var(--ink);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+
+.shell{display:grid;grid-template-columns:216px 1fr;min-height:100vh}
+.rail{background:var(--ink);color:#CFC9DA;padding:22px 0 18px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+.mark{padding:0 20px 18px;border-bottom:1px solid rgba(255,255,255,.09)}
+.mark h1{margin:0;font-size:15px;font-weight:600;color:#fff}
+.mark p{margin:3px 0 0;font-size:11.5px;color:#8D85A2}
+.nav{padding:14px 10px;display:flex;flex-direction:column;gap:2px}
+.nav button{background:none;border:0;text-align:left;padding:8px 11px;border-radius:3px;color:#CFC9DA;cursor:pointer;font-size:13.5px;display:flex;justify-content:space-between;gap:8px}
+.nav button:hover:not(:disabled){background:rgba(255,255,255,.07);color:#fff}
+.nav button[aria-current="true"]{background:var(--violet);color:#fff}
+.nav button:disabled{opacity:.35;cursor:default}
+.nav .tally{font-size:11.5px;font-family:var(--mono);opacity:.75}
+.railfoot{margin-top:auto;padding:0 20px;font-size:11px;color:#7E7692;line-height:1.6}
+
+.main{padding:26px 30px 60px;max-width:1600px}
+.main:has(.pane[data-pane='home'][data-active='true']){padding:0;max-width:none}
+.pane{display:none}
+.pane[data-active="true"]{display:block}
+
+.runbar{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 16px;padding-bottom:14px;margin-bottom:22px;border-bottom:2px solid var(--ink)}
+.runbar h2{margin:0;font-size:21px;font-weight:600;letter-spacing:-.2px}
+.runbar .src{font-family:var(--mono);font-size:12px;color:var(--slate)}
+.runbar .when{font-size:12px;color:var(--mute);margin-left:auto}
+
+.figs{display:flex;flex-wrap:wrap;border:1px solid var(--rule);background:var(--panel);margin-bottom:22px}
+.fig{padding:14px 20px;flex:1 1 140px;border-right:1px solid var(--rule)}
+.fig:last-child{border-right:0}
+.fig b{display:block;font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.15}
+.fig span{font-size:12px;color:var(--slate)}
+.fig.alarm b{color:var(--flag)}
+.fig.good b{color:var(--ok)}
+
+.drop{border:2px dashed var(--rule);background:var(--panel);padding:48px 28px;text-align:center;border-radius:3px}
+.drop.over{border-color:var(--violet);background:var(--violet-soft)}
+.drop h3{margin:0 0 6px;font-size:18px;font-weight:600}
+.drop p{margin:0 auto 20px;max-width:56ch;color:var(--slate);font-size:13px}
+.drop code{font-family:var(--mono);font-size:12px;background:#F3F0F7;padding:1px 5px}
+#file{display:none}
+
+.btn{border:1px solid var(--ink);background:var(--ink);color:#fff;padding:8px 15px;border-radius:3px;cursor:pointer;font-size:13.5px}
+.btn:hover:not(:disabled){background:var(--violet);border-color:var(--violet)}
+.btn:disabled{opacity:.5;cursor:default}
+.btn.ghost{background:none;color:var(--ink);border-color:var(--rule)}
+.btn.ghost:hover:not(:disabled){background:var(--violet-soft);color:var(--violet);border-color:var(--violet)}
+.btn.big{padding:11px 22px;font-size:15px}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--violet);outline-offset:2px}
+
+.steps{list-style:none;margin:22px auto 0;padding:0;max-width:340px;text-align:left}
+.steps li{padding:5px 0 5px 26px;color:var(--mute);font-size:13px;position:relative}
+.steps li:before{content:"";position:absolute;left:6px;top:11px;width:7px;height:7px;border-radius:50%;background:var(--rule)}
+.steps li.done{color:var(--slate)}
+.steps li.done:before{background:var(--ok)}
+.steps li.now{color:var(--violet);font-weight:600}
+.steps li.now:before{background:var(--violet)}
+
+.tools{display:flex;flex-wrap:wrap;gap:14px 18px;align-items:flex-end;background:var(--panel);border:1px solid var(--rule);padding:14px 16px;margin-bottom:16px}
+.tool{display:flex;flex-direction:column;gap:5px}
+.tool label{font-size:11.5px;color:var(--slate)}
+.tool input[type=text],.tool select{border:1px solid var(--rule);background:#fff;padding:6px 8px;border-radius:3px;min-width:150px}
+.tool input[type=text]{min-width:230px;font-family:var(--mono);font-size:12.5px}
+.tool input[type=range]{width:150px;accent-color:var(--violet)}
+.tool .val{font-family:var(--mono);font-size:12px;color:var(--violet);font-weight:600}
+.tools .spacer{margin-left:auto;display:flex;gap:8px}
+
+.count{font-size:12.5px;color:var(--slate);margin-bottom:10px}
+.count b{color:var(--ink);font-variant-numeric:tabular-nums}
+
+.tablewrap{border:1px solid var(--rule);background:var(--panel);overflow:auto;max-height:70vh}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+thead th{position:sticky;top:0;z-index:2;background:var(--ink);color:#fff;text-align:left;padding:9px 10px;font-weight:600;white-space:nowrap}
+tbody td{padding:6px 10px;border-bottom:1px solid #F0EDF4;vertical-align:top;white-space:nowrap;max-width:340px;overflow:hidden;text-overflow:ellipsis}
+tbody tr:hover td{background:#FAF7FD}
+td.m{font-family:var(--mono);font-size:12px}
+tr.grouphead td{background:var(--violet-soft);border-bottom:1px solid #DCCBE9;padding:7px 10px;font-weight:600;color:var(--violet);white-space:normal}
+tr.grouphead .meta{font-weight:400;color:var(--slate);font-size:12px}
+tbody tr.member td:first-child{border-left:4px solid var(--edge,var(--violet))}
+tr.high td{background:#FFF6F6}
+.chip{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11.5px;background:var(--violet-soft);color:var(--violet);font-variant-numeric:tabular-nums}
+.chip.hot{background:var(--flag-soft);color:var(--flag)}
+.chip.mid{background:#FDF3E0;color:var(--warn)}
+
+.doc{max-width:74ch}
+.doc h3{font-size:16px;margin:30px 0 8px;padding-bottom:5px;border-bottom:1px solid var(--rule)}
+.doc h3:first-child{margin-top:0}
+.doc p,.doc li{color:#332F3D;font-size:13.5px}
+.doc ul{padding-left:20px}
+.doc li{margin-bottom:5px}
+.doc code{font-family:var(--mono);font-size:12.5px;background:#F3F0F7;padding:1px 5px;border-radius:2px}
+.doc .note{border-left:3px solid var(--violet);background:var(--violet-soft);padding:10px 14px;font-size:13px}
+dl.defs dt{font-weight:600;margin-top:12px;font-size:13.5px}
+dl.defs dd{margin:2px 0 0;color:var(--slate);font-size:13.5px}
+.err{border-left:3px solid var(--flag);background:var(--flag-soft);padding:10px 14px;font-size:13px;margin-top:16px}
+
+/* ---------- home screen: tile grid ---------- */
+.tasksurface{
+  background:#101B33;
+  background-image:
+    linear-gradient(115deg, rgba(112,48,160,.20) 0%, rgba(16,27,51,0) 55%),
+    linear-gradient(0deg, rgba(31,78,121,.25) 0%, rgba(16,27,51,0) 40%);
+  padding:34px 30px 38px;
+  margin:-4px 0 0;
+}
+.tasksurface h2{margin:0 0 6px;font-size:20px;font-weight:600;color:#fff;letter-spacing:-.2px}
+.tasksurface .lead{color:#A7A0BC;font-size:13.5px;max-width:60ch;margin:0 0 26px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:22px;max-width:880px}
+.tile{
+  background:none;border:0;padding:0;cursor:pointer;display:block;width:100%;
+  border:3px solid transparent;border-radius:2px;
+}
+.tile .art{
+  background:#fff;height:118px;display:flex;align-items:center;justify-content:center;
+}
+.tile .cap{
+  display:block;
+  color:#fff;font-size:13.5px;font-weight:600;line-height:1.25;
+  padding:11px 8px;text-align:center;
+}
+.tile:hover:not(.soon),.tile:focus-visible{border-color:#fff;outline:none}
+.tile:hover:not(.soon) .cap{filter:brightness(1.12)}
+.tile.soon{cursor:default;opacity:.5}
+.tile.soon .art{background:#E9E7EF}
+
+/* ---------- rules module ---------- */
+.backlink{background:none;border:0;color:#8D85A2;font-size:12px;cursor:pointer;padding:8px 20px 0;text-align:left}
+.backlink:hover{color:#fff}
+.banner{border-left:3px solid var(--warn);background:#FDF6E7;padding:10px 14px;font-size:13px;
+  margin-bottom:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.banner b{color:var(--warn)}
+.banner .spacer{margin-left:auto;display:flex;gap:8px}
+.warnbox{border-left:3px solid var(--flag);background:var(--flag-soft);padding:10px 14px;font-size:13px;margin-bottom:14px}
+.okbox{border-left:3px solid var(--ok);background:#EDF6F1;padding:10px 14px;font-size:13px;margin-bottom:14px}
+td.act{white-space:nowrap;width:1%}
+.mini{border:1px solid var(--rule);background:#fff;border-radius:3px;padding:2px 8px;
+  font-size:12px;cursor:pointer;color:var(--slate);margin-right:4px}
+.mini:hover{border-color:var(--violet);color:var(--violet);background:var(--violet-soft)}
+.mini.danger:hover{border-color:var(--flag);color:var(--flag);background:var(--flag-soft)}
+.yes{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11.5px;background:#EDF6F1;color:var(--ok);font-weight:600}
+.no{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11.5px;background:#F2F0F5;color:var(--mute);font-weight:600}
+tbody td input.cell{width:100%;min-width:70px;border:1px solid var(--violet);border-radius:2px;padding:3px 5px;font-size:12.5px}
+tbody tr.editing td{background:var(--violet-soft)}
+.rulechip{display:inline-block;margin:2px 3px 0 0;padding:1px 7px;border-radius:10px;
+  font-size:11.5px;background:var(--violet-soft);color:var(--violet);font-family:var(--mono)}
+.rulechip.off{background:#F2F0F5;color:var(--mute)}
+.detail{border:1px solid var(--rule);background:var(--panel);padding:14px 16px;margin-bottom:16px}
+.detail h4{margin:0 0 6px;font-size:14px}
+
+/* ---------- assistant ---------- */
+.chatwrap{max-width:760px}
+.chatlog{border:1px solid var(--rule);background:var(--panel);border-radius:3px;
+  padding:16px;min-height:280px;max-height:56vh;overflow:auto;margin-bottom:12px}
+.msg{margin-bottom:14px;display:flex;gap:10px}
+.msg .who{font-size:11px;font-weight:600;color:var(--mute);width:34px;flex:none;padding-top:2px}
+.msg.you .bubble{background:var(--violet-soft);border-radius:3px;padding:8px 11px;font-size:13.5px}
+.msg.bot .bubble{background:#F6F4F9;border-radius:3px;padding:10px 12px;font-size:13.5px;flex:1}
+.msg.bot .bubble h5{margin:0 0 5px;font-size:13px;font-weight:600;color:var(--violet)}
+.msg.bot .bubble .body{color:#332F3D;line-height:1.55}
+.chatform{display:flex;gap:8px}
+.chatform input{flex:1;border:1px solid var(--rule);border-radius:3px;padding:9px 11px;font-size:13.5px}
+.chatform input:focus{outline:2px solid var(--violet);outline-offset:1px}
+.suggests{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.suggest{background:#fff;border:1px solid var(--rule);border-radius:14px;padding:4px 11px;
+  font-size:12px;cursor:pointer;color:var(--slate)}
+.suggest:hover{border-color:var(--violet);color:var(--violet);background:var(--violet-soft)}
+.chatnote{font-size:11.5px;color:var(--mute);margin-top:10px;line-height:1.5}
+.chatempty{color:var(--mute);font-size:13px;text-align:center;padding:40px 0}
+.detail p{margin:0 0 8px;font-size:13px;color:var(--slate)}
+
+.marketpicker{background:var(--violet-soft);border-top:1px solid #DCCBE9}
+.marketpicker .inner{padding:10px 14px 12px}
+.marketpicker .label{font-size:11.5px;color:var(--violet);font-weight:600;margin-bottom:7px}
+.marketgrid{display:flex;flex-wrap:wrap;gap:4px 6px}
+.marketgrid label{
+  display:inline-flex;align-items:center;gap:4px;font-size:12px;font-family:var(--mono);
+  background:#fff;border:1px solid var(--rule);border-radius:10px;padding:2px 8px 2px 6px;cursor:pointer;
+}
+.marketgrid label:has(input:checked){background:var(--violet);border-color:var(--violet);color:#fff}
+.marketgrid input{margin:0}
+.marketpicker .hint{font-size:11.5px;color:var(--slate);margin-top:6px}
+
+@media (max-width:820px){
+  .shell{grid-template-columns:1fr}
+  .rail{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;padding:12px 16px}
+  .mark{border:0;padding:0 16px 0 0}
+  .nav{flex-direction:row;flex-wrap:wrap;padding:8px 0}
+  .railfoot{display:none}
+  .main{padding:18px 16px 50px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="rail">
+    <div class="mark"><h1>Risk Control</h1><p id="task-name">Tasks</p></div>
+    <button class="backlink" id="back" hidden>&larr; All tasks</button>
+    <nav class="nav" id="nav"></nav>
+    <div class="railfoot">Internal use only.<br>Files are read in your browser. Nothing is uploaded anywhere.</div>
+  </aside>
+
+  <main class="main">
+
+    <section class="pane" data-task="home" data-pane="home" data-active="true">
+      <div class="tasksurface">
+        <h2>Risk Control tasks</h2>
+        <p class="lead">Pick a task. Everything runs in this page — no install, no server,
+           and nothing you load is uploaded anywhere.</p>
+        <div class="tiles">
+
+          <button class="tile" data-go="routine">
+            <span class="art">
+              <svg viewBox="0 0 64 64" width="74" height="74" aria-hidden="true">
+                <rect x="8" y="11" width="34" height="4.5" rx="1" fill="#C9C2D8"/>
+                <rect x="8" y="21" width="26" height="4.5" rx="1" fill="#C9C2D8"/>
+                <rect x="8" y="31" width="30" height="4.5" rx="1" fill="#C9C2D8"/>
+                <rect x="8" y="41" width="20" height="4.5" rx="1" fill="#C9C2D8"/>
+                <rect x="8" y="21" width="26" height="4.5" rx="1" fill="#7030A0"/>
+                <circle cx="41" cy="39" r="14" fill="#fff" stroke="#7030A0" stroke-width="4"/>
+                <path d="M51 49 L59 57" stroke="#7030A0" stroke-width="5" stroke-linecap="round"/>
+                <circle cx="36" cy="36" r="2.6" fill="#B4262F"/>
+                <circle cx="45" cy="36" r="2.6" fill="#B4262F"/>
+                <circle cx="41" cy="44" r="2.6" fill="#B4262F"/>
+                <path d="M36 36 L45 36 M36 36 L41 44 M45 36 L41 44" stroke="#B4262F" stroke-width="1.6"/>
+              </svg>
+            </span>
+            <span class="cap" style="background:#7030A0">Routine</span>
+          </button>
+
+          <button class="tile" data-go="rules">
+            <span class="art">
+              <svg viewBox="0 0 64 64" width="74" height="74" aria-hidden="true">
+                <path d="M32 6 L53 13 V32 C53 44 43 53 32 58 C21 53 11 44 11 32 V13 Z"
+                      fill="#E6F4F3" stroke="#1B8C88" stroke-width="3"/>
+                <rect x="20" y="21" width="24" height="3.4" rx="1" fill="#1B8C88"/>
+                <rect x="20" y="29" width="24" height="3.4" rx="1" fill="#1B8C88"/>
+                <rect x="20" y="37" width="14" height="3.4" rx="1" fill="#8FBFBD"/>
+                <path d="M28 45 L32 49 L42 39" stroke="#1B8C88" stroke-width="4"
+                      fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </span>
+            <span class="cap" style="background:#1B8C88">Bot Terminator Rules</span>
+          </button>
+
+          <div class="tile soon">
+            <span class="art">
+              <svg viewBox="0 0 64 64" width="74" height="74" aria-hidden="true">
+                <rect x="10" y="10" width="44" height="44" rx="3" fill="none"
+                      stroke="#9A93AB" stroke-width="3" stroke-dasharray="6 5"/>
+                <path d="M32 21 V43 M21 32 H43" stroke="#9A93AB" stroke-width="4" stroke-linecap="round"/>
+              </svg>
+            </span>
+            <span class="cap" style="background:#6E6880">More to come</span>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <section class="pane" data-task="rules" data-pane="r-overview">
+      <div class="runbar"><h2>Bot Terminator</h2><span class="src" id="r-src">built-in copy</span></div>
+      <div id="r-banner"></div>
+      <div class="figs" id="r-figs"></div>
+      <div id="r-checks"></div>
+      <p>
+        <button class="btn" id="r-export">Download updated workbook</button>
+        <button class="btn ghost" id="r-import">Load a rules workbook</button>
+        <input type="file" id="r-file" accept=".xlsx" style="display:none">
+        <button class="btn ghost" id="r-revert">Revert to loaded version</button>
+      </p>
+      <p class="count" id="r-note"></p>
+    </section>
+
+    <section class="pane" data-task="rules" data-pane="r-rules">
+      <div class="runbar"><h2>Rules</h2><span class="src">what each rule number detects</span></div>
+      <div id="r-banner2"></div>
+      <div class="tools">
+        <div class="tool"><label for="rq-rules">Search</label><input type="text" id="rq-rules" placeholder="attribute, rule number"></div>
+        <div class="tool"><label for="rf-market">Used by market</label><select id="rf-market"><option value="">Any</option></select></div>
+        <div class="spacer"><button class="btn ghost" id="r-add-rule">Add rule</button></div>
+      </div>
+      <div class="count" id="rc-rules"></div>
+      <div class="tablewrap"><table id="rt-rules"></table></div>
+    </section>
+
+    <section class="pane" data-task="rules" data-pane="r-markets">
+      <div class="runbar"><h2>Markets</h2><span class="src">per-market configuration and the rules each one runs</span></div>
+      <div class="tools">
+        <div class="tool"><label for="rq-markets">Search</label><input type="text" id="rq-markets" placeholder="market code"></div>
+        <div class="tool"><label for="rf-active">Status</label><select id="rf-active">
+          <option value="">All</option><option value="YES">Active</option><option value="NO">Not active</option></select></div>
+        <div class="spacer"><button class="btn ghost" id="r-add-market">Add market</button></div>
+      </div>
+      <div class="count" id="rc-markets"></div>
+      <div class="tablewrap"><table id="rt-markets"></table></div>
+      <div id="r-market-detail"></div>
+    </section>
+
+    <section class="pane" data-task="rules" data-pane="r-dry">
+      <div class="runbar"><h2>Dry runs</h2><span class="src">rules being trialled before going live</span></div>
+      <div class="tools">
+        <div class="tool"><label for="rq-dry">Search</label><input type="text" id="rq-dry" placeholder="market, rule, note"></div>
+        <div class="spacer"><button class="btn ghost" id="r-add-dry">Add dry run</button></div>
+      </div>
+      <div class="count" id="rc-dry"></div>
+      <div class="tablewrap"><table id="rt-dry"></table></div>
+    </section>
+
+    <section class="pane" data-task="rules" data-pane="r-deact">
+      <div class="runbar"><h2>Deactivated</h2><span class="src">what was switched off, when and why</span></div>
+      <div class="tools">
+        <div class="tool"><label for="rq-deact">Search</label><input type="text" id="rq-deact" placeholder="market, rule, reason"></div>
+        <div class="spacer"><button class="btn ghost" id="r-add-deact">Add deactivation</button></div>
+      </div>
+      <div class="count" id="rc-deact"></div>
+      <div class="tablewrap"><table id="rt-deact"></table></div>
+    </section>
+
+    <section class="pane" data-task="rules" data-pane="r-legacy">
+      <div class="runbar"><h2>Legacy names</h2><span class="src">old Bot Terminator rule names mapped to numbers</span></div>
+      <div class="tools">
+        <div class="tool"><label for="rq-legacy">Search</label><input type="text" id="rq-legacy" placeholder="old name or number"></div>
+        <div class="spacer"><button class="btn ghost" id="r-add-legacy">Add mapping</button></div>
+      </div>
+      <div class="count" id="rc-legacy"></div>
+      <div class="tablewrap"><table id="rt-legacy"></table></div>
+    </section>
+
+
+    <section class="pane" data-task="routine" data-pane="run">
+      <div class="runbar">
+        <h2>Run the routine</h2>
+        <span class="src" id="run-src"></span>
+        <span class="when" id="run-when"></span>
+      </div>
+
+      <div id="stage-drop">
+        <div class="drop" id="drop">
+          <h3>Drop today's TMX export here</h3>
+          <p>The raw CSV you downloaded from the portal — the <code>Daily_Registrations</code> saved
+             search. Everything runs here in the page: risk scoring, bot clusters, IP and attribute
+             clustering, gang detection. You get the same Excel report at the end.</p>
+          <button class="btn big" id="pick">Choose the TMX file</button>
+          <input type="file" id="file" accept=".csv,.tsv,.txt">
+        </div>
+        <div id="err"></div>
+      </div>
+
+      <div id="stage-work" hidden>
+        <div class="drop">
+          <h3 id="work-title">Reading the file</h3>
+          <p id="work-sub">Running on your machine. Nothing leaves the building.</p>
+        </div>
+      </div>
+
+      <div id="stage-done" hidden>
+        <div class="figs" id="figs"></div>
+        <p>
+          <button class="btn big" id="dl">Download the Excel report</button>
+          <button class="btn ghost" id="dl-csv">Export gangs as CSV</button>
+          <button class="btn ghost" id="again">Run another file</button>
+        </p>
+        <p class="count" id="dl-note"></p>
+        <div class="count">Biggest naming-pattern groups in this run.</div>
+        <div class="tablewrap" style="max-height:46vh"><table id="topgangs"></table></div>
+      </div>
+    </section>
+
+    <section class="pane" data-task="routine" data-pane="gangs">
+      <div class="runbar"><h2>Potential gangs</h2><span class="src">shared attributes plus a shared naming pattern</span></div>
+      <div class="tools">
+        <div class="tool"><label for="f-coh">Minimum cohesion <span class="val" id="v-coh">0</span></label>
+          <input type="range" id="f-coh" min="0" max="100" step="1" value="0"></div>
+        <div class="tool"><label for="f-size">Minimum accounts <span class="val" id="v-size">5</span></label>
+          <input type="range" id="f-size" min="5" max="60" step="1" value="5"></div>
+        <div class="tool"><label for="f-pass">Pass</label>
+          <select id="f-pass"><option value="">Both</option><option value="BSH">BSH</option><option value="CH">CH</option></select></div>
+        <div class="tool"><label for="f-country">Country</label><select id="f-country"><option value="">All</option></select></div>
+        <div class="tool"><label for="f-q">Search login, email or hash</label>
+          <input type="text" id="f-q" placeholder="e.g. gmail.com"></div>
+        <div class="spacer"><button class="btn ghost" id="reset">Clear filters</button></div>
+      </div>
+      <div class="count" id="g-count"></div>
+      <div class="tablewrap"><table id="gtable"></table></div>
+    </section>
+
+    <section class="pane" data-task="routine" data-pane="sheets">
+      <div class="runbar"><h2>Report sheets</h2><span class="src">exactly what lands in the workbook</span></div>
+      <div class="tools">
+        <div class="tool"><label for="s-pick">Sheet</label><select id="s-pick"></select></div>
+        <div class="tool"><label for="s-q">Search this sheet</label><input type="text" id="s-q" placeholder="type to filter rows"></div>
+        <div class="tool"><label for="s-country">Country</label><select id="s-country"><option value="">All</option></select></div>
+        <div class="tool" id="tool-size"><label for="s-size">Minimum group size <span class="val" id="v-ssize">1</span></label>
+          <input type="range" id="s-size" min="1" max="2" step="1" value="1"></div>
+        <div class="spacer"><button class="btn ghost" id="s-reset">Clear filters</button></div>
+      </div>
+      <div class="count" id="s-count"></div>
+      <div class="tablewrap"><table id="stable"></table></div>
+    </section>
+
+    <section class="pane" data-task="routine" data-pane="docs">
+      <div class="runbar"><h2>How it works</h2></div>
+      <div class="doc">
+        <h3>What this page does</h3>
+        <p>It is the routine, running in the browser. Drop the raw TMX export and it produces the same
+           ten-sheet workbook the Python script produces — same thresholds, same detection logic, same
+           column order. No Python, no Databricks, no install. It works offline from the shared drive.</p>
+        <p class="note">The output was checked cell by cell against the Python routine on the same
+           input. All ten sheets came back identical.</p>
+
+        <h3>The ten sheets</h3>
+        <ul>
+          <li><b>All Registrations</b> — every row, with a risk score, risk level, the reasons behind the score, and any shared-signal gang IDs.</li>
+          <li><b>Bot Clusters BSH / CH</b> — accounts whose email follows a generated pattern, sharing a browser or canvas fingerprint, registered inside a 24-hour window.</li>
+          <li><b>IPs / True IP / DOB / Phone / Postal Code / DNS IP</b> — accounts sharing an attribute. IP and phone match on the first 80% of the value, so near-misses still group.</li>
+          <li><b>Potential Gangs</b> — the naming-pattern analysis, scored by cohesion.</li>
+        </ul>
+
+        <h3>Risk scoring</h3>
+        <p>Each registration collects points for proxy or VPN use, remote desktop, hosting or datacenter
+           IPs, proxy routing, risky email results and TMX's own flags, capped at 100. The TMX policy
+           score adds up to 25 more. Anything at 70 or above is HIGH, 40 to 69 is MEDIUM.</p>
+
+        <h3>Reading a cohesion score</h3>
+        <p>Cohesion measures how alike the names are inside one group, out of 100: 40 points for a
+           shared email shape, 25 for the username matching the email, 20 for a shared alphabetic
+           affix, 15 for a repeated digit token.</p>
+        <dl class="defs">
+          <dt>Below 38</dt><dd>Noise. Names overlap by chance.</dd>
+          <dt>38 to 64</dt><dd>Worth a look, especially when the group is large.</dd>
+          <dt>65 and above</dt><dd>A naming factory. The accounts came from one template.</dd>
+        </dl>
+
+        <h3>Why fingerprints alone are not enough</h3>
+        <p>Serious operations rotate device fingerprints between registrations, so grouping on browser
+           hash alone misses them. The naming-pattern pass catches the shape of the names regardless of
+           which device produced them.</p>
+
+        <h3>If something goes wrong</h3>
+        <ul>
+          <li>Nothing detected: check the export has <code>Account Login</code> and <code>Account Email</code> columns. Without those, gang detection cannot run.</li>
+          <li>Broken accents: re-save the CSV as UTF-8 from Excel.</li>
+          <li>Very large files: the browser holds the whole file in memory. Above roughly 100,000 rows, split the export or fall back to the Python script.</li>
+          <li>Semicolons and commas are both handled — the delimiter is detected from the first line.</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+/* csv_core.js — CSV reading/writing shared by the page and the tests. */
+(function (root) {
+"use strict";
+function sniffDelim(text) {
+  var line = text.split(/\r?\n/)[0] || "";
+  var counts = { ",": 0, ";": 0, "\t": 0 }, inQ = false;
+  for (var i = 0; i < line.length; i++) {
+    var ch = line[i];
+    if (ch === '"') inQ = !inQ;
+    else if (!inQ && counts.hasOwnProperty(ch)) counts[ch]++;
+  }
+  var best = ",", top = -1;
+  for (var d in counts) if (counts[d] > top) { top = counts[d]; best = d; }
+  return best;
+}
+function parseCSV(text, delim) {
+  text = text.replace(/^\uFEFF/, "");
+  if (!delim) delim = sniffDelim(text);
+  var rows = [], row = [], field = "", inQ = false, i = 0;
+  while (i < text.length) {
+    var c = text[i];
+    if (inQ) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i += 2; continue; }
+        inQ = false; i++; continue;
+      }
+      field += c; i++; continue;
+    }
+    if (c === '"') { inQ = true; i++; continue; }
+    if (c === delim) { row.push(field); field = ""; i++; continue; }
+    if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(field); field = "";
+      if (row.length > 1 || row[0] !== "") rows.push(row);
+      row = []; i++; continue;
+    }
+    field += c; i++;
+  }
+  row.push(field);
+  if (row.length > 1 || row[0] !== "") rows.push(row);
+  return rows;
+}
+function toCSV(cols, rows) {
+  function cell(v) {
+    var s = String(v == null ? "" : v);
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  var out = [cols.map(cell).join(",")];
+  for (var i = 0; i < rows.length; i++) out.push(rows[i].map(cell).join(","));
+  return "\uFEFF" + out.join("\r\n");
+}
+root.CsvCore = { parseCSV: parseCSV, sniffDelim: sniffDelim, toCSV: toCSV };
+})(typeof module !== "undefined" && module.exports ? module.exports : (typeof window !== "undefined" ? window : this));
+
+/* ============================================================
+   routine_core.js — the TMX routine, ported to the browser.
+   Pure functions, no DOM, no dependencies. Mirrors:
+     ROUTINE_updated_Manually_  (Python / pandas / openpyxl)
+   ============================================================ */
+(function (root) {
+"use strict";
+
+/* ---------------- configuration (same numbers as the Python) ---------------- */
+var CFG = {
+  GANG_MIN_SIZE: 5,
+  MEDIUM_RISK_THRESHOLD: 40,
+  HIGH_RISK_THRESHOLD: 70,
+  BSH_LIMIT: 30,
+  CH_LIMIT: 30,
+  CLUSTER_MIN_SIZE: 2,
+  CLUSTER_HOURS: 24,
+  PATTERN_GANG_MIN_SIZE: 5,
+  TRUE_IP_MIN: 5,
+  DOB_MIN: 5,
+  IP_PREFIX_MIN: 2,
+  IP_PREFIX_MAX: 20,
+  PHONE_PREFIX_MIN: 2,
+  POSTAL_MIN: 2,
+  DNS_MIN: 2
+};
+
+var GANG_SIGNALS = [
+  ["Browser String Hash", "Shared Browser Fingerprint"],
+  ["Browser Language",    "Shared Browser Language"],
+  ["Account Telephone",   "Shared Phone Number"]
+];
+
+var SUSPICIOUS_CONN_TYPES  = ["hosting", "datacenter", "data center", "vpn", "tor", "proxy"];
+var SUSPICIOUS_PROXY_TYPES = ["tor", "vpn", "proxy", "anonymous", "elite", "transparent", "hosting"];
+var SUSPICIOUS_EMAIL_RES   = ["invalid", "disposable", "fraud", "risk", "abuse"];
+var SUSPICIOUS_ROUTING     = ["proxy", "vpn", "tor", "anonymous"];
+
+var EMAIL_PATTERN = /^(?=[a-z0-9.\-_]*\d)([a-z]+[.\-_][a-z0-9]+([.\-_][a-z0-9]+)*|[a-z]+\d+[a-z0-9]*)$/;
+
+var CLUSTER_KEYS_BSH = ["Browser Language", "Browser String Hash", "Account Email Domain", "Screen Resolution"];
+var CLUSTER_KEYS_CH  = ["Browser Language", "Canvas Hash", "Account Email Domain", "Screen Resolution"];
+
+var GANG_ATTRS_BSH = ["Browser String Hash", "Screen Resolution", "Browser Language", "Account Email Domain"];
+var GANG_ATTRS_CH  = ["Canvas Hash", "Screen Resolution", "Browser Language", "Account Email Domain"];
+
+var BRAND_COL_CANDIDATES = ["Brand", "Account Brand", "Account Org", "Org Name",
+                            "Organization", "Line Of Business", "Site", "Policy"];
+
+/* ---------------- small helpers ---------------- */
+function isBlank(v) {
+  if (v === null || v === undefined) return true;
+  var s = String(v).trim().toLowerCase();
+  return s === "" || s === "nan" || s === "none" || s === "null";
+}
+function low(v) { return String(v == null ? "" : v).trim().toLowerCase(); }
+function has(hay, needles) {
+  var s = low(hay);
+  for (var i = 0; i < needles.length; i++) if (s.indexOf(needles[i]) !== -1) return true;
+  return false;
+}
+function pct(x) { return Math.round(x * 100) + "%"; }
+
+/* Parse an Event Time cell into epoch ms, or NaN. */
+function parseTime(v) {
+  if (isBlank(v)) return NaN;
+  var s = String(v).trim();
+  var t = Date.parse(s);
+  if (!isNaN(t)) return t;
+  t = Date.parse(s.replace(" ", "T"));
+  if (!isNaN(t)) return t;
+  // dd/mm/yyyy hh:mm[:ss]
+  var m = s.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})[ T]?(\d{1,2})?:?(\d{2})?:?(\d{2})?/);
+  if (m) {
+    return Date.UTC(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
+  }
+  return NaN;
+}
+
+/* ---------------- table wrapper ---------------- */
+function Table(header, rows) {
+  this.header = header;
+  this.rows = rows;
+  this.ix = {};
+  for (var i = 0; i < header.length; i++) {
+    var k = String(header[i]).trim();
+    if (!(k in this.ix)) this.ix[k] = i;
+  }
+}
+Table.prototype.col = function (name) {
+  return (name in this.ix) ? this.ix[name] : -1;
+};
+Table.prototype.hasCol = function (name) { return this.col(name) !== -1; };
+Table.prototype.get = function (row, name) {
+  var i = this.col(name);
+  return i === -1 ? "" : (row[i] == null ? "" : row[i]);
+};
+
+/* Group row-index lists by the concatenation of several columns.
+   Rows with a blank value in ANY key are dropped — matches pandas
+   groupby(dropna=True). */
+function groupBy(tbl, rowIdx, keyNames) {
+  var idxs = keyNames.map(function (n) { return tbl.col(n); });
+  var map = Object.create(null);
+  var order = [];
+  for (var r = 0; r < rowIdx.length; r++) {
+    var i = rowIdx[r], row = tbl.rows[i], parts = [], ok = true;
+    for (var k = 0; k < idxs.length; k++) {
+      var v = idxs[k] === -1 ? "" : row[idxs[k]];
+      if (isBlank(v)) { ok = false; break; }
+      parts.push(String(v).trim());
+    }
+    if (!ok) continue;
+    var key = parts.join("\u0001");
+    if (!map[key]) { map[key] = { values: parts, rows: [] }; order.push(key); }
+    map[key].rows.push(i);
+  }
+  return order.map(function (k) { return map[k]; });
+}
+
+/* ---------------- risk scoring ---------------- */
+var SCORING_RULES = [
+  ["Proxy Type",               function (v) { return !isBlank(v) && has(v, SUSPICIOUS_PROXY_TYPES); }, 35, "Proxy/VPN/Tor detected"],
+  ["Remote Desktop",           function (v) { return ["true","yes","1"].indexOf(low(v)) !== -1; },      30, "Remote desktop session"],
+  ["Screen Resolution Anomaly",function (v) { return ["true","yes","1"].indexOf(low(v)) !== -1; },      20, "Screen resolution anomaly"],
+  ["True IP Connection Type",  function (v) { return has(v, SUSPICIOUS_CONN_TYPES); },                  25, "Hosting/datacenter IP"],
+  ["True IP Organization Type",function (v) { return has(v, SUSPICIOUS_CONN_TYPES); },                  20, "Hosting/datacenter org"],
+  ["True IP Routing Type",     function (v) { return has(v, SUSPICIOUS_ROUTING); },                     30, "Proxy/VPN routing"],
+  ["Input IP Connection Type", function (v) { return has(v, SUSPICIOUS_CONN_TYPES); },                  15, "Suspicious input IP type"],
+  ["TMX Summary Reasons",      function (v) { return !isBlank(v); },                                    15, "TMX flagged reasons"],
+  ["Account Email Result",     function (v) { return has(v, SUSPICIOUS_EMAIL_RES); },                   20, "Risky email address"]
+];
+
+function scoreRow(tbl, row) {
+  var total = 0, reasons = [];
+  for (var i = 0; i < SCORING_RULES.length; i++) {
+    var rule = SCORING_RULES[i];
+    if (!tbl.hasCol(rule[0])) continue;
+    try {
+      if (rule[1](tbl.get(row, rule[0]))) { total += rule[2]; reasons.push(rule[3]); }
+    } catch (e) { /* mirror the Python's silent skip */ }
+  }
+  if (tbl.hasCol("Smart Learning Policy Score")) {
+    var s = parseFloat(tbl.get(row, "Smart Learning Policy Score"));
+    if (!isNaN(s)) {
+      if (s >= 800)      { total += 25; reasons.push("TMX score: " + Math.trunc(s)); }
+      else if (s >= 600) { total += 15; reasons.push("TMX score: " + Math.trunc(s)); }
+      else if (s >= 400) { total += 5;  reasons.push("TMX score: " + Math.trunc(s)); }
+    }
+  }
+  return { score: Math.min(total, 100), reasons: reasons.join(" | ") };
+}
+
+function riskLevel(score) {
+  if (score >= CFG.HIGH_RISK_THRESHOLD) return "HIGH";
+  if (score >= CFG.MEDIUM_RISK_THRESHOLD) return "MEDIUM";
+  return "LOW";
+}
+
+/* ---------------- signal gangs ---------------- */
+function detectGangs(tbl) {
+  var gangs = [], map = Object.create(null), counter = 1;
+  var loginIdx = tbl.col("Account Login");
+  for (var g = 0; g < GANG_SIGNALS.length; g++) {
+    var colName = GANG_SIGNALS[g][0], label = GANG_SIGNALS[g][1];
+    if (!tbl.hasCol(colName)) continue;
+    var ci = tbl.col(colName);
+    var buckets = Object.create(null), order = [];
+    for (var i = 0; i < tbl.rows.length; i++) {
+      var v = tbl.rows[i][ci];
+      if (isBlank(v)) continue;
+      var key = String(v).trim();
+      if (!buckets[key]) { buckets[key] = []; order.push(key); }
+      buckets[key].push(i);
+    }
+    order.sort();                     // pandas groupby walks keys in sorted order
+    for (var o = 0; o < order.length; o++) {
+      var rowsIn = buckets[order[o]];
+      var seen = Object.create(null), logins = [];
+      for (var r = 0; r < rowsIn.length; r++) {
+        var lv = loginIdx === -1 ? "" : tbl.rows[rowsIn[r]][loginIdx];
+        if (isBlank(lv)) continue;
+        var ls = String(lv);
+        if (!seen[ls]) { seen[ls] = true; logins.push(ls); }
+      }
+      if (logins.length < CFG.GANG_MIN_SIZE) continue;
+      var gid = "G" + String(counter++).padStart(4, "0");
+      gangs.push({ gang_id: gid, signal_type: label, signal_col: colName,
+                   shared_value: order[o], account_count: logins.length,
+                   accounts: logins, row_indices: rowsIn });
+      for (var L = 0; L < logins.length; L++) {
+        (map[logins[L]] || (map[logins[L]] = [])).push(gid);
+      }
+    }
+  }
+  return { gangs: gangs, map: map };
+}
+
+/* ---------------- bot email clusters (BSH / CH) ---------------- */
+function detectEmailClusters(tbl, hashCol, keyNames, limit) {
+  if (!tbl.hasCol(hashCol) || !tbl.hasCol("Account Email")) {
+    return { clusters: [], stats: { total_analysed: tbl.rows.length, pattern_matches: 0,
+                                    excluded: 0, flagged: 0, clusters_found: 0 } };
+  }
+  var emailIdx = tbl.col("Account Email"), hashIdx = tbl.col(hashCol);
+  var srIdx = tbl.col("Screen Resolution");
+
+  // pattern match on the email local part
+  var patternMatch = new Array(tbl.rows.length), matches = 0;
+  for (var i = 0; i < tbl.rows.length; i++) {
+    var e = tbl.rows[i][emailIdx];
+    var localPart = isBlank(e) ? "" : String(e).split("@")[0].toLowerCase();
+    patternMatch[i] = EMAIL_PATTERN.test(localPart);
+    if (patternMatch[i]) matches++;
+  }
+
+  // hashes shared by `limit` or more registrations are too common to mean anything
+  var hashCount = Object.create(null);
+  for (i = 0; i < tbl.rows.length; i++) {
+    var h = tbl.rows[i][hashIdx];
+    if (isBlank(h)) continue;
+    var hs = String(h).trim();
+    hashCount[hs] = (hashCount[hs] || 0) + 1;
+  }
+  var excluded = 0;
+  for (var k in hashCount) if (hashCount[k] >= limit) excluded++;
+
+  var candidates = [];
+  for (i = 0; i < tbl.rows.length; i++) {
+    if (!patternMatch[i]) continue;
+    var hv = tbl.rows[i][hashIdx];
+    if (isBlank(hv)) continue;
+    if (hashCount[String(hv).trim()] >= limit) continue;
+    if (srIdx !== -1 && isBlank(tbl.rows[i][srIdx])) continue;
+    candidates.push(i);
+  }
+
+  var available = keyNames.filter(function (n) { return tbl.hasCol(n); });
+  var groups = groupBy(tbl, candidates, available);
+  var timeIdx = tbl.col("Event Time");
+  var clusters = [];
+
+  for (var gi = 0; gi < groups.length; gi++) {
+    var grp = groups[gi];
+    var withTime = grp.rows.map(function (ri) {
+      return { ri: ri, t: timeIdx === -1 ? NaN : parseTime(tbl.rows[ri][timeIdx]) };
+    }).sort(function (a, b) {
+      if (isNaN(a.t) && isNaN(b.t)) return 0;
+      if (isNaN(a.t)) return 1;
+      if (isNaN(b.t)) return -1;
+      return a.t - b.t;
+    });
+
+    // any 24h window holding CLUSTER_MIN_SIZE or more registrations flags them all
+    var windowMs = CFG.CLUSTER_HOURS * 3600 * 1000;
+    var flagged = Object.create(null), any = false, j = 0;
+    for (var a = 0; a < withTime.length; a++) {
+      if (isNaN(withTime[a].t)) continue;
+      if (j < a) j = a;
+      while (j + 1 < withTime.length && !isNaN(withTime[j + 1].t) &&
+             withTime[j + 1].t <= withTime[a].t + windowMs) j++;
+      if (j - a + 1 >= CFG.CLUSTER_MIN_SIZE) {
+        for (var m = a; m <= j; m++) { flagged[withTime[m].ri] = true; any = true; }
+      }
+    }
+    if (!any) continue;
+
+    var members = withTime.filter(function (x) { return flagged[x.ri]; })
+                          .map(function (x) { return x.ri; });
+    var v = grp.values;
+    var hashShort = available.length > 1 ? String(v[1]).slice(0, 8) + "..." : "";
+    var cid = v[0] + " | " + hashShort + " | " + (v.length > 2 ? v[2] : "");
+    clusters.push({ cluster_id: cid, cluster_size: members.length, rows: members });
+  }
+
+  return {
+    clusters: clusters,
+    stats: {
+      total_analysed: tbl.rows.length,
+      pattern_matches: matches,
+      excluded: excluded,
+      flagged: clusters.reduce(function (s, c) { return s + c.rows.length; }, 0),
+      clusters_found: clusters.length
+    }
+  };
+}
+
+/* ---------------- naming-pattern shape helpers ---------------- */
+var SEPS = { ".": 1, "_": 1, "-": 1 };
+
+function sig(s) {
+  s = String(s == null ? "" : s).trim().toLowerCase();
+  var out = [], i = 0, n = s.length;
+  while (i < n) {
+    var c = s[i];
+    if (c >= "a" && c <= "z") { out.push("L"); i++; while (i < n && s[i] >= "a" && s[i] <= "z") i++; }
+    else if (c >= "0" && c <= "9") { out.push("D"); i++; while (i < n && s[i] >= "0" && s[i] <= "9") i++; }
+    else { out.push(SEPS[c] ? c : "?"); i++; }
+  }
+  return out.join("");
+}
+
+function alphaSuffix(localPart, k) {
+  k = k || 2;
+  var m = String(localPart == null ? "" : localPart).toLowerCase().match(/^[a-z]+/);
+  if (!m) return "";
+  var b = m[0];
+  return b.length >= k ? b.slice(-k) : b;
+}
+
+function topOf(counter) {
+  var bestK = "", bestN = 0;
+  for (var k in counter) if (counter[k] > bestN) { bestN = counter[k]; bestK = k; }
+  return [bestK, bestN];
+}
+
+function describeGroup(items) {
+  var n = items.length;
+  var eC = {}, lC = {}, sC = {}, tC = {}, uEq = 0;
+  for (var i = 0; i < n; i++) {
+    var it = items[i];
+    eC[it.esig] = (eC[it.esig] || 0) + 1;
+    lC[it.lsig] = (lC[it.lsig] || 0) + 1;
+    if (it.suffix) sC[it.suffix] = (sC[it.suffix] || 0) + 1;
+    if (it.uEqE) uEq++;
+    var toks = String(it.local).match(/\d{2,}/g) || [];
+    var uniq = {};
+    for (var t = 0; t < toks.length; t++) uniq[toks[t]] = 1;
+    for (var u in uniq) tC[u] = (tC[u] || 0) + 1;
+  }
+  var e = topOf(eC), eShare = e[1] / n;
+  var l = topOf(lC), lShare = l[1] / n;
+  var s = topOf(sC), sShare = s[1] / n;
+  var d = topOf(tC), dShare = d[1] / n;
+  var uShare = uEq / n;
+
+  var eParts = ["shape '" + e[0] + "' (" + pct(eShare) + ")"];
+  if (s[0] && sShare >= 0.5) eParts.push("affix '-" + s[0] + "' (" + pct(sShare) + ")");
+  if (d[0] && dShare >= 0.4) eParts.push("repeats '" + d[0] + "' (" + pct(dShare) + ")");
+
+  var lParts = ["shape '" + l[0] + "' (" + pct(lShare) + ")"];
+  if (uShare >= 0.5) lParts.push("username==email (" + pct(uShare) + ")");
+
+  var coh = 40 * eShare + 25 * uShare + 20 * sShare + 15 * dShare;
+
+  return {
+    email_pattern: eParts.join(", "),
+    login_pattern: lParts.join(", "),
+    cohesion: Math.round(Math.min(coh, 100))
+  };
+}
+
+/* ---------------- potential gangs ---------------- */
+function findGangs(tbl, attrs, minSize) {
+  minSize = minSize || CFG.PATTERN_GANG_MIN_SIZE;
+  if (!tbl.hasCol("Account Login") || !tbl.hasCol("Account Email")) return [];
+  var keys = attrs.filter(function (a) { return tbl.hasCol(a); });
+  if (!keys.length) return [];
+
+  var loginIdx = tbl.col("Account Login"), emailIdx = tbl.col("Account Email");
+  var meta = new Array(tbl.rows.length);
+  for (var i = 0; i < tbl.rows.length; i++) {
+    var login = low(tbl.rows[i][loginIdx]);
+    var email = low(tbl.rows[i][emailIdx]);
+    var local = email.split("@")[0];
+    meta[i] = { local: local, esig: sig(local), lsig: sig(login),
+                suffix: alphaSuffix(local), uEqE: login === local };
+  }
+
+  var all = [];
+  for (i = 0; i < tbl.rows.length; i++) all.push(i);
+  var groups = groupBy(tbl, all, keys);
+  var timeIdx = tbl.col("Event Time");
+  var out = [], gid = 1;
+
+  for (var g = 0; g < groups.length; g++) {
+    var grp = groups[g];
+    if (grp.rows.length < minSize) continue;
+    var items = grp.rows.map(function (ri) { return meta[ri]; });
+    var desc = describeGroup(items);
+    var sorted = grp.rows.slice();
+    if (timeIdx !== -1) {
+      sorted.sort(function (a, b) {
+        var ta = String(tbl.rows[a][timeIdx] || ""), tb = String(tbl.rows[b][timeIdx] || "");
+        return ta < tb ? -1 : ta > tb ? 1 : 0;
+      });
+    }
+    var attrMap = {};
+    for (var k = 0; k < keys.length; k++) attrMap[keys[k]] = grp.values[k];
+    out.push({
+      gang_id: "PG" + String(gid++).padStart(3, "0"),
+      size: grp.rows.length,
+      attrs: attrMap,
+      email_pattern: desc.email_pattern,
+      login_pattern: desc.login_pattern,
+      cohesion: desc.cohesion,
+      rows: sorted
+    });
+  }
+  out.sort(function (a, b) { return (b.cohesion - a.cohesion) || (b.size - a.size); });
+  return out;
+}
+
+function detectBrandColumn(tbl) {
+  for (var i = 0; i < BRAND_COL_CANDIDATES.length; i++) {
+    if (tbl.hasCol(BRAND_COL_CANDIDATES[i])) return BRAND_COL_CANDIDATES[i];
+  }
+  return null;
+}
+
+/* ---------------- shared-value sheets (True IP, DOB, Postal, DNS) ---------------- */
+function sharedValueGroups(tbl, colName, minCount, maxCount) {
+  if (!tbl.hasCol(colName)) return null;
+  var ci = tbl.col(colName);
+  var buckets = Object.create(null), order = [];
+  for (var i = 0; i < tbl.rows.length; i++) {
+    var v = tbl.rows[i][ci];
+    if (isBlank(v)) continue;
+    var key = String(v).trim();
+    if (!buckets[key]) { buckets[key] = []; order.push(key); }
+    buckets[key].push(i);
+  }
+  var groups = [];
+  for (var o = 0; o < order.length; o++) {
+    var n = buckets[order[o]].length;
+    if (n < minCount) continue;
+    if (maxCount && n > maxCount) continue;
+    groups.push({ value: order[o], rows: buckets[order[o]], size: n });
+  }
+  groups.sort(function (a, b) { return a.value < b.value ? -1 : a.value > b.value ? 1 : 0; });
+  return groups;
+}
+
+/* 80% prefix, matching the Python round() on length */
+function prefix80(v) {
+  if (isBlank(v)) return null;
+  var s = String(v).trim();
+  var n = Math.max(1, bankersRound(s.length * 0.8));
+  return s.slice(0, n);
+}
+/* Python's round() is banker's rounding — 2.5 -> 2, 3.5 -> 4 */
+function bankersRound(x) {
+  var f = Math.floor(x), diff = x - f;
+  if (Math.abs(diff - 0.5) < 1e-9) return (f % 2 === 0) ? f : f + 1;
+  return Math.round(x);
+}
+
+function prefixGroups(tbl, colName, minCount, maxCount) {
+  if (!tbl.hasCol(colName)) return null;
+  var ci = tbl.col(colName);
+  var buckets = Object.create(null), order = [];
+  for (var i = 0; i < tbl.rows.length; i++) {
+    var p = prefix80(tbl.rows[i][ci]);
+    if (p === null) continue;
+    if (!buckets[p]) { buckets[p] = []; order.push(p); }
+    buckets[p].push(i);
+  }
+  var groups = [];
+  for (var o = 0; o < order.length; o++) {
+    var n = buckets[order[o]].length;
+    if (n < minCount) continue;
+    if (maxCount && n > maxCount) continue;
+    groups.push({ value: order[o], rows: buckets[order[o]], size: n });
+  }
+  groups.sort(function (a, b) { return a.value < b.value ? -1 : a.value > b.value ? 1 : 0; });
+  return groups;
+}
+
+/* ============================================================
+   runRoutine — the whole pipeline
+   ============================================================ */
+function runRoutine(header, rows, onProgress) {
+  function step(msg) { if (onProgress) onProgress(msg); }
+
+  var tbl = new Table(header, rows);
+  var result = { sheets: [], stats: {}, table: tbl };
+
+  /* -- risk scoring -- */
+  step("Scoring registrations");
+  var scores = new Array(rows.length), levels = new Array(rows.length),
+      reasons = new Array(rows.length);
+  var counts = { HIGH: 0, MEDIUM: 0, LOW: 0 };
+  for (var i = 0; i < rows.length; i++) {
+    var sc = scoreRow(tbl, rows[i]);
+    scores[i] = sc.score;
+    reasons[i] = sc.reasons;
+    levels[i] = riskLevel(sc.score);
+    counts[levels[i]]++;
+  }
+
+  /* -- signal gangs -- */
+  step("Finding shared-signal gangs");
+  var gangRes = detectGangs(tbl);
+  var loginIdx = tbl.col("Account Login");
+  var gangIds = new Array(rows.length);
+  for (i = 0; i < rows.length; i++) {
+    var lg = loginIdx === -1 ? "" : String(rows[i][loginIdx]);
+    gangIds[i] = (gangRes.map[lg] || []).join(", ");
+  }
+
+  /* -- All Registrations -- */
+  step("Building the registrations sheet");
+  // Risk Score / Risk Level / Risk Reasons / Gang IDs are still computed — they
+  // drive the run summary and the row shading — but are no longer written as
+  // columns. To bring them back, restore the concat below and in allRows.
+  var allHeader = header.slice();
+  var allRows = new Array(rows.length), allSrc = new Array(rows.length),
+      allTints = new Array(rows.length);
+  for (i = 0; i < rows.length; i++) {
+    allRows[i] = rows[i];
+    allSrc[i] = i;
+    allTints[i] = levels[i] === "HIGH" ? "FFE0E0" : levels[i] === "MEDIUM" ? "FFF3CC" : null;
+  }
+  result.sheets.push({
+    name: "📋 All Registrations", color: "1F4E79", headerAt: 1,
+    header: allHeader, rows: allRows, srcRows: allSrc, rowTints: allTints,
+    riskLevels: levels, freeze: "A2"
+  });
+
+  /* -- bot clusters -- */
+  step("Detecting bot clusters (browser hash)");
+  var bsh = detectEmailClusters(tbl, "Browser String Hash", CLUSTER_KEYS_BSH, CFG.BSH_LIMIT);
+  step("Detecting bot clusters (canvas hash)");
+  var ch  = detectEmailClusters(tbl, "Canvas Hash", CLUSTER_KEYS_CH, CFG.CH_LIMIT);
+
+  result.sheets.push(clusterSheet(tbl, "🤖 Bot Clusters - Gangs BSH",
+    "Bot Email Cluster Detection — Browser String Hash",
+    "Email pattern matches: " + bsh.stats.pattern_matches +
+    "  |  BSH excluded (30+ accounts): " + bsh.stats.excluded +
+    "  |  Flagged: " + bsh.stats.flagged + "  |  Clusters: " + bsh.stats.clusters_found,
+    bsh.clusters, "Browser String Hash"));
+
+  result.sheets.push(clusterSheet(tbl, "🤖 Bot Clusters - Gangs CH",
+    "Bot Email Cluster Detection — Canvas Hash",
+    "Email pattern matches: " + ch.stats.pattern_matches +
+    "  |  CH excluded (30+ accounts): " + ch.stats.excluded +
+    "  |  Flagged: " + ch.stats.flagged + "  |  Clusters: " + ch.stats.clusters_found,
+    ch.clusters, "Canvas Hash"));
+
+  /* -- IP / attribute sheets -- */
+  step("Clustering IPs and account attributes");
+  result.sheets.push(groupSheet(tbl, "🌐 IPs", "Shared Input IP Prefix Detection (80% match)",
+    prefixGroups(tbl, "Input IP", CFG.IP_PREFIX_MIN, CFG.IP_PREFIX_MAX),
+    "IP Prefix (80%)", "Prefix Group Size", "Input IP",
+    "Groups with 2+ accounts sharing same IP prefix", "No shared Input IP prefixes detected."));
+
+  result.sheets.push(groupSheet(tbl, "🌐 True IP", "Shared True IP Detection (5+ accounts)",
+    sharedValueGroups(tbl, "True IP", CFG.TRUE_IP_MIN),
+    "True IP", "Group Size", "True IP",
+    "IPs with 5+ accounts", "No shared True IPs detected."));
+
+  result.sheets.push(groupSheet(tbl, "🎂 DOB", "Shared Date of Birth Detection (5+ accounts)",
+    sharedValueGroups(tbl, "Account Date of Birth", CFG.DOB_MIN),
+    "Account Date of Birth", "Group Size", "Account Date of Birth",
+    "DOBs with 5+ accounts", "No shared Dates of Birth detected."));
+
+  result.sheets.push(groupSheet(tbl, "📞 Phone", "Shared Phone Number Prefix Detection (80% match)",
+    prefixGroups(tbl, "Account Telephone", CFG.PHONE_PREFIX_MIN),
+    "Phone Prefix (80%)", "Group Size", "Account Telephone",
+    "Groups with 2+ accounts sharing same phone prefix", "No shared phone prefixes detected."));
+
+  result.sheets.push(groupSheet(tbl, "📮 Postal Code", "Shared Postal Code Detection (2+ accounts)",
+    sharedValueGroups(tbl, "Account Address Postal Code", CFG.POSTAL_MIN),
+    "Account Address Postal Code", "Group Size", "Account Address Postal Code",
+    "Postal codes with 2+ accounts", "No shared postal codes detected."));
+
+  result.sheets.push(groupSheet(tbl, "🛰️ DNS IP", "Shared DNS IP Detection (2+ accounts)",
+    sharedValueGroups(tbl, "DNS IP", CFG.DNS_MIN),
+    "DNS IP", "Group Size", "DNS IP",
+    "DNS IPs with 2+ accounts", "No shared DNS IPs detected."));
+
+  /* -- potential gangs -- */
+  step("Scoring naming patterns");
+  var brandCol = detectBrandColumn(tbl);
+  var sources = [];
+  sources.push({ label: "BSH", attrs: GANG_ATTRS_BSH, gangs: findGangs(tbl, GANG_ATTRS_BSH) });
+  if (tbl.hasCol("Canvas Hash")) {
+    sources.push({ label: "CH", attrs: GANG_ATTRS_CH, gangs: findGangs(tbl, GANG_ATTRS_CH) });
+  }
+  result.sheets.push(gangsSheet(tbl, sources, brandCol));
+
+  result.gangSources = sources;
+  result.brandCol = brandCol;
+  result.stats = {
+    total: rows.length,
+    high: counts.HIGH, medium: counts.MEDIUM, low: counts.LOW,
+    signalGangs: gangRes.gangs.length,
+    bshClusters: bsh.stats.clusters_found,
+    chClusters: ch.stats.clusters_found,
+    bshFlagged: bsh.stats.flagged,
+    chFlagged: ch.stats.flagged,
+    patternGangs: sources.reduce(function (s, x) { return s + x.gangs.length; }, 0)
+  };
+  step("Done");
+  return result;
+}
+
+/* ---------------- sheet builders ---------------- */
+function clusterSheet(tbl, name, title, subtitle, clusters, hashCol) {
+  var cols = ["Cluster ID", "Cluster Size", "Event Time", "Account Login", "Account Email",
+              "Account Address Country", "Browser Language", hashCol,
+              "Account Email Domain", "Screen Resolution"];
+  var out = [], src = [];
+  for (var c = 0; c < clusters.length; c++) {
+    var cl = clusters[c];
+    for (var r = 0; r < cl.rows.length; r++) {
+      var row = tbl.rows[cl.rows[r]];
+      out.push([cl.cluster_id, cl.cluster_size].concat(
+        cols.slice(2).map(function (cn) { return tbl.get(row, cn); })));
+      src.push(cl.rows[r]);
+    }
+  }
+  return { name: name, color: "7030A0", title: title, subtitle: subtitle,
+           header: cols, rows: out, srcRows: src, freeze: true,
+           empty: "No bot email clusters detected." };
+}
+
+function groupSheet(tbl, name, title, groups, valueLabel, sizeLabel, sourceCol, countPhrase, emptyMsg) {
+  if (groups === null) {
+    return { name: name, color: "1F4E79", noTitle: true,
+             header: [], rows: [], empty: "Column '" + sourceCol + "' not found in data." };
+  }
+  var show = ["Account Login", "Account Email", "Account Address Country", "Event Time"];
+  var avail = show.filter(function (c) { return tbl.hasCol(c); });
+  var tIdx = tbl.col("Event Time");
+  if (tIdx !== -1) {
+    groups.forEach(function (grp) {
+      grp.rows = grp.rows
+        .map(function (ri, k) { return [ri, k]; })
+        .sort(function (a, b) {
+          var ta = String(tbl.rows[a[0]][tIdx] || ""), tb = String(tbl.rows[b[0]][tIdx] || "");
+          return ta < tb ? -1 : ta > tb ? 1 : a[1] - b[1];
+        })
+        .map(function (x) { return x[0]; });
+    });
+  }
+  var header = [valueLabel, sizeLabel].concat(avail);
+  var out = [], src = [], flagged = 0;
+  for (var g = 0; g < groups.length; g++) {
+    var grp = groups[g];
+    for (var r = 0; r < grp.rows.length; r++) {
+      var row = tbl.rows[grp.rows[r]];
+      out.push([grp.value, grp.size].concat(avail.map(function (cn) { return tbl.get(row, cn); })));
+      src.push(grp.rows[r]);
+      flagged++;
+    }
+  }
+  return {
+    name: name, color: "1F4E79", title: title,
+    subtitle: countPhrase + ": " + groups.length + "  |  Total accounts flagged: " + flagged,
+    header: header, rows: out, srcRows: src, freeze: true, tint: "DEEAF1", empty: emptyMsg,
+    groups: groups
+  };
+}
+
+var GANG_PALETTE = ["EDE7F6","E3F2FD","E8F5E9","FFF3E0","FCE4EC","E0F2F1","FFF9C4","F3E5F5"];
+
+function gangsSheet(tbl, sources, brandCol) {
+  var total = sources.reduce(function (s, x) { return s + x.gangs.length; }, 0);
+  var attrCols = [];
+  sources.forEach(function (s) {
+    s.attrs.forEach(function (a) { if (attrCols.indexOf(a) === -1) attrCols.push(a); });
+  });
+
+  var header = ["Gang ID", "Source", "Cohesion", "Account Count"];
+  if (brandCol) header.push(brandCol);
+  header.push("Account Address Country");
+  header = header.concat(["Event Time", "Account Login", "Account Email",
+                          "Email Pattern", "Username Pattern"]).concat(attrCols);
+
+  var rows = [], tints = [], srcIdx = [], counter = 1, gangIdx = 0;
+  sources.forEach(function (src) {
+    src.gangs.forEach(function (gg) {
+      var pgid = src.label + "-PG" + String(counter++).padStart(3, "0");
+      var fill = GANG_PALETTE[gangIdx++ % GANG_PALETTE.length];
+      gg.rows.forEach(function (ri) {
+        var r = tbl.rows[ri];
+        var line = [pgid, src.label, gg.cohesion, gg.size];
+        if (brandCol) line.push(tbl.get(r, brandCol));
+        line.push(tbl.get(r, "Account Address Country"));
+        line = line.concat([tbl.get(r, "Event Time"), tbl.get(r, "Account Login"),
+                            tbl.get(r, "Account Email"), gg.email_pattern, gg.login_pattern]);
+        line = line.concat(attrCols.map(function (c) { return tbl.get(r, c); }));
+        rows.push(line);
+        tints.push(fill);
+        srcIdx.push(ri);   // named srcIdx: the forEach parameter above is called src
+      });
+    });
+  });
+
+  var passes = sources.map(function (s) { return s.label + ": " + s.gangs.length; }).join("  |  ");
+  return {
+    name: "🧬 Potential Gangs", color: "7030A0",
+    title: "Potential Gangs — " + total + " group(s) sharing attributes + naming pattern",
+    subtitle: "Passes — " + passes + "  |  min " + CFG.PATTERN_GANG_MIN_SIZE + " accounts" +
+              (brandCol ? "  |  brand col: '" + brandCol + "'" : "  |  all brands (no brand col found)") +
+              "  |  use the filter arrows on 'Cohesion' / 'Account Count' to drill in",
+    header: header, rows: rows, rowTints: tints, srcRows: srcIdx, freeze: true, autofilter: true,
+    empty: "No potential gangs detected."
+  };
+}
+
+/* ---------------- exports ---------------- */
+root.RoutineCore = {
+  CFG: CFG,
+  Table: Table,
+  runRoutine: runRoutine,
+  sig: sig,
+  alphaSuffix: alphaSuffix,
+  describeGroup: describeGroup,
+  findGangs: findGangs,
+  parseTime: parseTime,
+  prefix80: prefix80,
+  scoreRow: scoreRow,
+  riskLevel: riskLevel,
+  EMAIL_PATTERN: EMAIL_PATTERN
+};
+
+})(typeof module !== "undefined" && module.exports ? module.exports : (typeof window !== "undefined" ? window : this));
+
+/* ============================================================
+   xlsx_writer.js — builds a real .xlsx in the browser with no
+   libraries. ZIP entries are stored uncompressed, which needs
+   nothing but a CRC32 table, and Excel reads them fine.
+   ============================================================ */
+(function (root) {
+"use strict";
+
+/* ---------------- CRC32 ---------------- */
+var CRC_TABLE = (function () {
+  var t = new Uint32Array(256);
+  for (var n = 0; n < 256; n++) {
+    var c = n;
+    for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(bytes) {
+  var c = 0xFFFFFFFF;
+  for (var i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+var enc = (typeof TextEncoder !== "undefined")
+  ? new TextEncoder()
+  : { encode: function (s) { return Uint8Array.from(Buffer.from(s, "utf8")); } };
+
+/* ---------------- DEFLATE ----------------
+   Chrome and Edge expose CompressionStream, so entries get real deflate
+   and the workbook lands about 15x smaller. Without it we store the
+   bytes uncompressed, which Excel still opens. */
+function deflateRaw(bytes) {
+  if (typeof CompressionStream === "undefined") return Promise.resolve(null);
+  try {
+    var cs = new CompressionStream("deflate-raw");
+    var writer = cs.writable.getWriter();
+    writer.write(bytes);
+    writer.close();
+    return new Response(cs.readable).arrayBuffer().then(function (buf) {
+      return new Uint8Array(buf);
+    }).catch(function () { return null; });
+  } catch (e) {
+    return Promise.resolve(null);
+  }
+}
+
+function compressAll(files) {
+  return Promise.all(files.map(function (f) {
+    // CRC and size must be taken BEFORE deflating: writing a typed array into
+    // a CompressionStream can detach its buffer, leaving f.data unreadable.
+    var crc = crc32(f.data);
+    var rawSize = f.data.length;
+    return deflateRaw(f.data).then(function (packed) {
+      if (packed) {
+        return { name: f.name, data: packed, method: 8, crc: crc, rawSize: rawSize };
+      }
+      return { name: f.name, data: f.data, method: 0, crc: crc, rawSize: rawSize };
+    });
+  }));
+}
+
+/* ---------------- ZIP ---------------- */
+function zip(files) {
+  var chunks = [], central = [], offset = 0;
+
+  files.forEach(function (f) {
+    var nameBytes = enc.encode(f.name);
+    var data = f.data;
+    var crc = (f.crc !== undefined) ? f.crc : crc32(data);
+    var rawSize = (f.rawSize !== undefined) ? f.rawSize : data.length;
+    var method = f.method || 0;
+
+    var local = new Uint8Array(30 + nameBytes.length);
+    var dv = new DataView(local.buffer);
+    dv.setUint32(0, 0x04034b50, true);
+    dv.setUint16(4, 20, true);
+    dv.setUint16(6, 0x0800, true);     // UTF-8 names
+    dv.setUint16(8, method, true);
+    dv.setUint16(10, 0, true);
+    dv.setUint16(12, 0x2100, true);    // fixed date/time, keeps output stable
+    dv.setUint32(14, crc, true);
+    dv.setUint32(18, data.length, true);
+    dv.setUint32(22, rawSize, true);
+    dv.setUint16(26, nameBytes.length, true);
+    dv.setUint16(28, 0, true);
+    local.set(nameBytes, 30);
+
+    chunks.push(local, data);
+
+    var cd = new Uint8Array(46 + nameBytes.length);
+    var cv = new DataView(cd.buffer);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(4, 20, true);
+    cv.setUint16(6, 20, true);
+    cv.setUint16(8, 0x0800, true);
+    cv.setUint16(10, method, true);   // central dir: method lives at offset 10
+    cv.setUint16(12, 0, true);        // mod time
+    cv.setUint16(14, 0x2100, true);   // mod date
+    cv.setUint32(16, crc, true);
+    cv.setUint32(20, data.length, true);
+    cv.setUint32(24, rawSize, true);
+    cv.setUint16(28, nameBytes.length, true);
+    cv.setUint16(30, 0, true);
+    cv.setUint16(32, 0, true);
+    cv.setUint16(34, 0, true);
+    cv.setUint16(36, 0, true);
+    cv.setUint32(38, 0, true);
+    cv.setUint32(42, offset, true);
+    cd.set(nameBytes, 46);
+    central.push(cd);
+
+    offset += local.length + data.length;
+  });
+
+  var cdSize = central.reduce(function (s, c) { return s + c.length; }, 0);
+  var end = new Uint8Array(22);
+  var ev = new DataView(end.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, files.length, true);
+  ev.setUint16(10, files.length, true);
+  ev.setUint32(12, cdSize, true);
+  ev.setUint32(16, offset, true);
+
+  var total = offset + cdSize + 22;
+  var out = new Uint8Array(total), p = 0;
+  chunks.forEach(function (c) { out.set(c, p); p += c.length; });
+  central.forEach(function (c) { out.set(c, p); p += c.length; });
+  out.set(end, p);
+  return out;
+}
+
+/* ---------------- XML helpers ---------------- */
+function esc(s) {
+  s = String(s == null ? "" : s);
+  var out = "";
+  for (var i = 0; i < s.length; i++) {
+    var c = s.charCodeAt(i), ch = s[i];
+    if (c < 0x20 && c !== 9 && c !== 10 && c !== 13) continue;  // illegal in XLSX
+    if (ch === "&") out += "&amp;";
+    else if (ch === "<") out += "&lt;";
+    else if (ch === ">") out += "&gt;";
+    else if (ch === '"') out += "&quot;";
+    else out += ch;
+  }
+  return out;
+}
+
+function colLetter(n) {
+  var s = "";
+  while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+
+/* Excel forbids : \ / ? * [ ] in sheet names and caps them at 31 chars */
+function safeSheetName(name, used) {
+  var s = String(name).replace(/[:\\\/?*\[\]]/g, "-").slice(0, 31) || "Sheet";
+  var base = s, n = 2;
+  while (used[s]) { s = (base.slice(0, 28) + "_" + n).slice(0, 31); n++; }
+  used[s] = true;
+  return s;
+}
+
+/* ---------------- styles ---------------- */
+function Styles() {
+  this.fills = ["none", "gray125"];   // both are mandatory in this order
+  this.tintXf = {};
+}
+Styles.prototype.fillFor = function (hex) {
+  var i = this.fills.indexOf(hex);
+  if (i === -1) { this.fills.push(hex); i = this.fills.length - 1; }
+  return i;
+};
+/* cellXfs layout:
+   0 default | 1 title blue | 2 title purple | 3 subtitle
+   4 header blue | 5 header purple | 6 data plain | 7+ data tinted */
+Styles.prototype.xfForTint = function (hex) {
+  if (!hex) return 6;
+  if (this.tintXf[hex] === undefined) {
+    this.fillFor(hex);
+    this.tintXf[hex] = -1;   // resolved in xml()
+  }
+  return hex;
+};
+Styles.prototype.xml = function () {
+  var self = this;
+  var tints = Object.keys(this.tintXf);
+  tints.forEach(function (hex) { self.fillFor(hex); });
+
+  var fillsXml = this.fills.map(function (f) {
+    if (f === "none") return '<fill><patternFill patternType="none"/></fill>';
+    if (f === "gray125") return '<fill><patternFill patternType="gray125"/></fill>';
+    return '<fill><patternFill patternType="solid"><fgColor rgb="FF' + f +
+           '"/><bgColor indexed="64"/></patternFill></fill>';
+  }).join("");
+
+  var fonts =
+    '<font><sz val="9"/><name val="Arial"/></font>' +
+    '<font><b/><sz val="13"/><color rgb="FF1F4E79"/><name val="Arial"/></font>' +
+    '<font><b/><sz val="13"/><color rgb="FF7030A0"/><name val="Arial"/></font>' +
+    '<font><sz val="9"/><color rgb="FF595959"/><name val="Arial"/></font>' +
+    '<font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Arial"/></font>';
+
+  var borders =
+    '<border><left/><right/><top/><bottom/><diagonal/></border>' +
+    '<border>' +
+      '<left style="thin"><color rgb="FFD0D0D0"/></left>' +
+      '<right style="thin"><color rgb="FFD0D0D0"/></right>' +
+      '<top style="thin"><color rgb="FFD0D0D0"/></top>' +
+      '<bottom style="thin"><color rgb="FFD0D0D0"/></bottom>' +
+      '<diagonal/></border>';
+
+  var xfs = [
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>',
+    '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>',
+    '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>',
+    '<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>',
+    '<xf numFmtId="0" fontId="4" fillId="' + this.fillFor("1F4E79") + '" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>',
+    '<xf numFmtId="0" fontId="4" fillId="' + this.fillFor("7030A0") + '" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>',
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1"/>'
+  ];
+
+  tints.forEach(function (hex) {
+    self.tintXf[hex] = xfs.length;
+    xfs.push('<xf numFmtId="0" fontId="0" fillId="' + self.fillFor(hex) +
+             '" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>');
+  });
+
+  // fills may have grown while building xfs, so render them last
+  fillsXml = this.fills.map(function (f) {
+    if (f === "none") return '<fill><patternFill patternType="none"/></fill>';
+    if (f === "gray125") return '<fill><patternFill patternType="gray125"/></fill>';
+    return '<fill><patternFill patternType="solid"><fgColor rgb="FF' + f +
+           '"/><bgColor indexed="64"/></patternFill></fill>';
+  }).join("");
+
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<fonts count="5">' + fonts + '</fonts>' +
+    '<fills count="' + this.fills.length + '">' + fillsXml + '</fills>' +
+    '<borders count="2">' + borders + '</borders>' +
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+    '<cellXfs count="' + xfs.length + '">' + xfs.join("") + '</cellXfs>' +
+    '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
+    '</styleSheet>';
+};
+
+/* ---------------- sheet rendering ---------------- */
+function cellXml(ref, value, styleIdx) {
+  var s = styleIdx ? ' s="' + styleIdx + '"' : "";
+  if (typeof value === "number" && isFinite(value)) {
+    return '<c r="' + ref + '"' + s + '><v>' + value + '</v></c>';
+  }
+  var text = String(value == null ? "" : value);
+  if (text === "") return styleIdx ? '<c r="' + ref + '"' + s + '/>' : "";
+  return '<c r="' + ref + '" t="inlineStr"' + s + '><is><t xml:space="preserve">' +
+         esc(text) + '</t></is></c>';
+}
+
+function widthsXml(header, rows) {
+  if (!header.length) return "";
+  var w = header.map(function (h) { return String(h == null ? "" : h).length; });
+  var sample = Math.min(rows.length, 400);
+  for (var r = 0; r < sample; r++) {
+    for (var c = 0; c < header.length; c++) {
+      var v = rows[r][c];
+      if (v != null) { var L = String(v).length; if (L > w[c]) w[c] = L; }
+    }
+  }
+  var cols = w.map(function (x, i) {
+    var width = Math.max(Math.min(x + 4, 55), 8);
+    return '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + width + '" customWidth="1"/>';
+  }).join("");
+  return "<cols>" + cols + "</cols>";
+}
+
+function sheetXml(sheet, styles) {
+  var parts = [];
+  var rowNum = 0;
+  var headerRowNum = 0;
+  var lines = [];
+
+  function pushRow(cells) {
+    rowNum++;
+    lines.push('<row r="' + rowNum + '">' + cells.join("") + "</row>");
+  }
+
+  // title / subtitle block, when the sheet has one
+  if (sheet.title && !sheet.noTitle) {
+    var titleStyle = sheet.color === "7030A0" ? 2 : 1;
+    pushRow([cellXml("A" + (rowNum + 1), sheet.title, titleStyle)]);
+    if (sheet.subtitle) pushRow([cellXml("A" + (rowNum + 1), sheet.subtitle, 3)]);
+    pushRow([]);
+  }
+
+  var headerStyle = sheet.color === "7030A0" ? 5 : 4;
+
+  if (!sheet.header.length || !sheet.rows.length) {
+    // matches the Python: no header row is written when there is nothing to show
+    pushRow([cellXml("A" + (rowNum + 1), sheet.empty || "No data.", 0)]);
+  } else {
+    headerRowNum = rowNum + 1;
+    pushRow(sheet.header.map(function (h, i) {
+      return cellXml(colLetter(i + 1) + headerRowNum, h, headerStyle);
+    }));
+
+    var tintXfCache = {};
+    function xfFor(hex) {
+      if (!hex) return 6;
+      if (tintXfCache[hex] === undefined) { styles.xfForTint(hex); tintXfCache[hex] = hex; }
+      return hex;   // resolved to a number after styles.xml() runs
+    }
+
+    for (var r = 0; r < sheet.rows.length; r++) {
+      var row = sheet.rows[r];
+      var hex = null;
+      if (sheet.rowTints) hex = sheet.rowTints[r];
+      else if (sheet.tintBy) hex = sheet.tintBy(row);
+      else if (sheet.tint) hex = sheet.tint;
+      if (hex) xfFor(hex);
+
+      var rn = rowNum + 1;
+      var cells = [];
+      for (var c = 0; c < row.length; c++) {
+        cells.push(cellXml(colLetter(c + 1) + rn, row[c], hex ? "\u0000" + hex : 6));
+      }
+      pushRow(cells);
+    }
+  }
+
+  var body = lines.join("");
+
+  var views = "";
+  if (sheet.freeze && headerRowNum) {
+    views = '<sheetViews><sheetView workbookViewId="0">' +
+            '<pane ySplit="' + headerRowNum + '" topLeftCell="A' + (headerRowNum + 1) +
+            '" activePane="bottomLeft" state="frozen"/>' +
+            '</sheetView></sheetViews>';
+  }
+
+  var af = "";
+  if (sheet.autofilter && headerRowNum && sheet.rows.length) {
+    af = '<autoFilter ref="A' + headerRowNum + ':' + colLetter(sheet.header.length) +
+         (headerRowNum + sheet.rows.length) + '"/>';
+  }
+
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    views + widthsXml(sheet.header, sheet.rows) +
+    '<sheetData>' + body + '</sheetData>' + af + '</worksheet>';
+}
+
+/* ---------------- workbook ---------------- */
+function buildParts(sheets) {
+  var styles = new Styles();
+  var used = {};
+  var names = sheets.map(function (s) { return safeSheetName(s.name, used); });
+
+  // render sheets first so every tint colour is registered
+  var rendered = sheets.map(function (s) { return sheetXml(s, styles); });
+  var stylesXml = styles.xml();
+
+  // swap the tint placeholders for their resolved style index
+  rendered = rendered.map(function (xml) {
+    return xml.replace(/s="\u0000([0-9A-Fa-f]{6})"/g, function (_, hex) {
+      var idx = styles.tintXf[hex];
+      return 's="' + (idx === undefined || idx < 0 ? 6 : idx) + '"';
+    });
+  });
+
+  var files = [];
+  function add(name, text) { files.push({ name: name, data: enc.encode(text) }); }
+
+  var overrides = names.map(function (_, i) {
+    return '<Override PartName="/xl/worksheets/sheet' + (i + 1) +
+           '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
+  }).join("");
+
+  add("[Content_Types].xml",
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+    overrides +
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+    '</Types>');
+
+  add("_rels/.rels",
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+    '</Relationships>');
+
+  add("xl/workbook.xml",
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    '<sheets>' + names.map(function (n, i) {
+      return '<sheet name="' + esc(n) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>';
+    }).join("") + '</sheets></workbook>');
+
+  add("xl/_rels/workbook.xml.rels",
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    names.map(function (_, i) {
+      return '<Relationship Id="rId' + (i + 1) +
+             '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' +
+             (i + 1) + '.xml"/>';
+    }).join("") +
+    '<Relationship Id="rId' + (names.length + 1) +
+    '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+    '</Relationships>');
+
+  rendered.forEach(function (xml, i) { add("xl/worksheets/sheet" + (i + 1) + ".xml", xml); });
+  add("xl/styles.xml", stylesXml);
+
+  return files;
+}
+
+function build(sheets) { return zip(buildParts(sheets)); }
+
+function buildAsync(sheets) {
+  var files = buildParts(sheets);
+  return compressAll(files).then(zip);
+}
+
+root.XlsxWriter = { build: build, buildAsync: buildAsync };
+
+})(typeof module !== "undefined" && module.exports ? module.exports : (typeof window !== "undefined" ? window : this));
+
+/* ============================================================
+   xlsx_reader.js — reads .xlsx in the browser with no libraries.
+   Unzips with DecompressionStream, parses with DOMParser.
+   Returns { sheetNames, sheets: { name: { header, rows } } }.
+   ============================================================ */
+(function (root) {
+"use strict";
+
+var dec = (typeof TextDecoder !== "undefined")
+  ? new TextDecoder("utf-8")
+  : { decode: function (b) { return Buffer.from(b).toString("utf8"); } };
+
+/* ---------------- unzip ---------------- */
+function inflateRaw(bytes) {
+  if (typeof DecompressionStream === "undefined") {
+    return Promise.reject(new Error("This browser cannot unzip .xlsx files. Use Chrome or Edge."));
+  }
+  var ds = new DecompressionStream("deflate-raw");
+  var w = ds.writable.getWriter();
+  w.write(bytes);
+  w.close();
+  return new Response(ds.readable).arrayBuffer().then(function (b) { return new Uint8Array(b); });
+}
+
+/* Walk the central directory rather than the local headers: local headers may
+   carry zeroed sizes when a streaming writer produced the file. */
+function unzip(buf) {
+  var u = new Uint8Array(buf), dv = new DataView(u.buffer, u.byteOffset, u.byteLength);
+  var eocd = -1;
+  for (var i = u.length - 22; i >= 0 && i > u.length - 66000; i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd === -1) return Promise.reject(new Error("Not a valid .xlsx file (no zip directory)."));
+
+  var count = dv.getUint16(eocd + 10, true);
+  var cdOff = dv.getUint32(eocd + 16, true);
+  var entries = [], p = cdOff;
+
+  for (var n = 0; n < count; n++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    var method = dv.getUint16(p + 10, true);
+    var cSize = dv.getUint32(p + 20, true);
+    var nameLen = dv.getUint16(p + 28, true);
+    var extraLen = dv.getUint16(p + 30, true);
+    var cmtLen = dv.getUint16(p + 32, true);
+    var lOff = dv.getUint32(p + 42, true);
+    var name = dec.decode(u.subarray(p + 46, p + 46 + nameLen));
+
+    var lNameLen = dv.getUint16(lOff + 26, true);
+    var lExtraLen = dv.getUint16(lOff + 28, true);
+    var dataStart = lOff + 30 + lNameLen + lExtraLen;
+
+    entries.push({ name: name, method: method, data: u.subarray(dataStart, dataStart + cSize) });
+    p += 46 + nameLen + extraLen + cmtLen;
+  }
+
+  var files = {};
+  return Promise.all(entries.map(function (e) {
+    if (e.method === 0) { files[e.name] = dec.decode(e.data); return null; }
+    return inflateRaw(e.data).then(function (out) { files[e.name] = dec.decode(out); });
+  })).then(function () { return files; });
+}
+
+/* ---------------- helpers ---------------- */
+function parseXml(text) {
+  return new DOMParser().parseFromString(text, "application/xml");
+}
+function colOf(ref) {
+  var n = 0;
+  for (var i = 0; i < ref.length; i++) {
+    var c = ref.charCodeAt(i);
+    if (c < 65 || c > 90) break;
+    n = n * 26 + (c - 64);
+  }
+  return n - 1;
+}
+
+/* Excel stores dates as serial numbers; only the cell's number format says so. */
+var DATE_FMT_IDS = {14:1,15:1,16:1,17:1,18:1,19:1,20:1,21:1,22:1,45:1,46:1,47:1};
+function serialToDate(n) {
+  var ms = Math.round((n - 25569) * 86400 * 1000);   // 1899-12-30 epoch
+  var d = new Date(ms);
+  if (isNaN(d.getTime())) return String(n);
+  return d.getUTCFullYear() + "-" +
+         String(d.getUTCMonth() + 1).padStart(2, "0") + "-" +
+         String(d.getUTCDate()).padStart(2, "0");
+}
+
+function buildStyleMap(files) {
+  var isDate = [];
+  var xml = files["xl/styles.xml"];
+  if (!xml) return isDate;
+  var doc = parseXml(xml);
+  var custom = {};
+  var fmts = doc.getElementsByTagName("numFmt");
+  for (var i = 0; i < fmts.length; i++) {
+    var id = +fmts[i].getAttribute("numFmtId");
+    var code = fmts[i].getAttribute("formatCode") || "";
+    if (/[dmyhs]/i.test(code) && !/[#0]/.test(code.replace(/\[[^\]]*\]/g, ""))) custom[id] = true;
+  }
+  var xfsNode = doc.getElementsByTagName("cellXfs")[0];
+  if (!xfsNode) return isDate;
+  var xfs = xfsNode.getElementsByTagName("xf");
+  for (var k = 0; k < xfs.length; k++) {
+    var nid = +(xfs[k].getAttribute("numFmtId") || 0);
+    isDate[k] = !!(DATE_FMT_IDS[nid] || custom[nid]);
+  }
+  return isDate;
+}
+
+function sharedStrings(files) {
+  var out = [];
+  var xml = files["xl/sharedStrings.xml"];
+  if (!xml) return out;
+  var doc = parseXml(xml);
+  var si = doc.getElementsByTagName("si");
+  for (var i = 0; i < si.length; i++) {
+    var ts = si[i].getElementsByTagName("t"), s = "";
+    for (var j = 0; j < ts.length; j++) s += ts[j].textContent;
+    out.push(s);
+  }
+  return out;
+}
+
+/* ---------------- main ---------------- */
+function read(buf) {
+  return unzip(buf).then(function (files) {
+    var wbXml = files["xl/workbook.xml"];
+    if (!wbXml) throw new Error("That file is not a spreadsheet.");
+
+    var rels = {};
+    var relXml = files["xl/_rels/workbook.xml.rels"];
+    if (relXml) {
+      var rd = parseXml(relXml).getElementsByTagName("Relationship");
+      for (var i = 0; i < rd.length; i++) {
+        rels[rd[i].getAttribute("Id")] = rd[i].getAttribute("Target");
+      }
+    }
+
+    var strings = sharedStrings(files);
+    var dateStyles = buildStyleMap(files);
+
+    var sheetNodes = parseXml(wbXml).getElementsByTagName("sheet");
+    var names = [], sheets = {};
+
+    for (var s = 0; s < sheetNodes.length; s++) {
+      var nm = sheetNodes[s].getAttribute("name");
+      var rid = sheetNodes[s].getAttribute("r:id") ||
+                sheetNodes[s].getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
+      var target = rels[rid] || ("worksheets/sheet" + (s + 1) + ".xml");
+      if (target.charAt(0) === "/") target = target.slice(1);
+      else target = "xl/" + target.replace(/^\.\//, "");
+      var xml = files[target];
+      if (!xml) continue;
+
+      var grid = [];
+      var rowNodes = parseXml(xml).getElementsByTagName("row");
+      for (var r = 0; r < rowNodes.length; r++) {
+        var cells = rowNodes[r].getElementsByTagName("c");
+        var line = [];
+        for (var c = 0; c < cells.length; c++) {
+          var cell = cells[c];
+          var ref = cell.getAttribute("r") || "";
+          var at = ref ? colOf(ref) : c;
+          var t = cell.getAttribute("t");
+          var styleIdx = +(cell.getAttribute("s") || 0);
+          var val = "";
+
+          if (t === "inlineStr") {
+            var its = cell.getElementsByTagName("t");
+            for (var q = 0; q < its.length; q++) val += its[q].textContent;
+          } else {
+            var v = cell.getElementsByTagName("v")[0];
+            var raw = v ? v.textContent : "";
+            if (t === "s") val = strings[+raw] !== undefined ? strings[+raw] : "";
+            else if (t === "b") val = raw === "1" ? "TRUE" : "FALSE";
+            else if (raw !== "" && dateStyles[styleIdx] && isFinite(+raw)) val = serialToDate(+raw);
+            else val = raw;
+          }
+          while (line.length < at) line.push("");
+          line[at] = val;
+        }
+        grid.push(line);
+      }
+
+      // trim trailing blank rows and normalise width
+      while (grid.length && !grid[grid.length - 1].join("").trim()) grid.pop();
+      var width = grid.reduce(function (m, x) { return Math.max(m, x.length); }, 0);
+      grid.forEach(function (x) { while (x.length < width) x.push(""); });
+
+      names.push(nm);
+      sheets[nm] = { header: grid.length ? grid[0] : [], rows: grid.slice(1) };
+    }
+    return { sheetNames: names, sheets: sheets };
+  });
+}
+
+root.XlsxReader = { read: read };
+
+})(typeof module !== "undefined" && module.exports ? module.exports : (typeof window !== "undefined" ? window : this));
+
+/* ============================================================
+   rules_module.js — Bot Terminator rule catalogue.
+   The source workbook keeps two unrelated tables side by side on
+   its "Rules" sheet: rule definitions in columns A-D and per-market
+   configuration in columns G-L. They are split here and recombined
+   on export so the file stays byte-compatible with the original.
+   ============================================================ */
+(function (root) {
+"use strict";
+
+var S = null;          // live state
+var DIRTY = 0;
+
+function clone(o) { return JSON.parse(JSON.stringify(o)); }
+
+function init(seed) {
+  S = clone(seed);
+  DIRTY = 0;
+  return S;
+}
+function state() { return S; }
+function dirty() { return DIRTY; }
+function touch() { DIRTY++; }
+function resetDirty() { DIRTY = 0; }
+
+/* ---------------- rule-list helpers ---------------- */
+/* "0, 1, 3, 4, 6, 7, 10, 11" -> [0,1,3,4,6,7,10,11]  (the sheet is
+   inconsistent about spacing, and some entries repeat) */
+function parseRuleList(str) {
+  if (!str) return [];
+  var seen = {}, out = [];
+  String(str).split(/[,;]+/).forEach(function (p) {
+    var t = p.trim();
+    if (!t) return;
+    var n = parseInt(t, 10);
+    if (isNaN(n)) return;
+    if (!seen[n]) { seen[n] = 1; out.push(n); }
+  });
+  return out.sort(function (a, b) { return a - b; });
+}
+function formatRuleList(arr) {
+  return arr.slice().sort(function (a, b) { return a - b; }).join(", ");
+}
+
+function ruleNum(r) { return parseInt(r.num, 10); }
+
+/* which markets run a given rule number */
+function marketsForRule(num) {
+  var n = parseInt(num, 10);
+  return S.markets.filter(function (m) {
+    return parseRuleList(m.rules).indexOf(n) !== -1;
+  }).map(function (m) { return m.code; });
+}
+
+/* rules a market runs, resolved to definitions */
+function rulesForMarket(code) {
+  var m = S.markets.filter(function (x) { return x.code === code; })[0];
+  if (!m) return [];
+  var nums = parseRuleList(m.rules);
+  return nums.map(function (n) {
+    var def = S.rules.filter(function (r) { return ruleNum(r) === n; })[0];
+    return def || { num: String(n), attrs: "(not defined in the Rules table)", threshold: "", timeframe: "" };
+  });
+}
+
+/* a rule number that appears in a market list but has no definition */
+function orphanRuleNumbers() {
+  var defined = {};
+  S.rules.forEach(function (r) { defined[ruleNum(r)] = 1; });
+  var bad = {};
+  S.markets.forEach(function (m) {
+    parseRuleList(m.rules).forEach(function (n) { if (!defined[n]) bad[n] = 1; });
+  });
+  return Object.keys(bad).map(Number).sort(function (a, b) { return a - b; });
+}
+
+/* rules defined but not used by any market */
+function unusedRules() {
+  return S.rules.filter(function (r) {
+    return marketsForRule(r.num).length === 0;
+  });
+}
+
+function isDeactivated(num, market) {
+  var n = parseInt(num, 10);
+  return S.deactivated.some(function (d) {
+    return parseInt(d.num, 10) === n && (!market || d.market === market);
+  });
+}
+
+function stats() {
+  var activeMarkets = S.markets.filter(function (m) { return String(m.active).toUpperCase() === "YES"; }).length;
+  return {
+    rules: S.rules.length,
+    markets: S.markets.length,
+    activeMarkets: activeMarkets,
+    inactiveMarkets: S.markets.length - activeMarkets,
+    dryruns: S.dryruns.length,
+    deactivated: S.deactivated.length,
+    unused: unusedRules().length,
+    orphans: orphanRuleNumbers().length
+  };
+}
+
+/* ---------------- mutations ---------------- */
+function addRule(rule) { S.rules.push(rule); touch(); }
+function updateRule(i, rule) { S.rules[i] = rule; touch(); }
+function deleteRule(i) { S.rules.splice(i, 1); touch(); }
+
+function addMarket(m) { S.markets.push(m); touch(); }
+function updateMarket(i, m) { S.markets[i] = m; touch(); }
+function deleteMarket(i) { S.markets.splice(i, 1); touch(); }
+
+function addRow(table, row) { S[table].push(row); touch(); }
+function updateRow(table, i, row) { S[table][i] = row; touch(); }
+function deleteRow(table, i) { S[table].splice(i, 1); touch(); }
+
+/* toggle a rule on or off for one market */
+function setRuleForMarket(code, num, on) {
+  var m = S.markets.filter(function (x) { return x.code === code; })[0];
+  if (!m) return;
+  var list = parseRuleList(m.rules);
+  var n = parseInt(num, 10);
+  var at = list.indexOf(n);
+  if (on && at === -1) list.push(n);
+  if (!on && at !== -1) list.splice(at, 1);
+  m.rules = formatRuleList(list);
+  touch();
+}
+
+/* ---------------- export back to the original layout ---------------- */
+function buildSheets() {
+  /* "Rules" sheet: rule definitions in A-D, two blank spacer columns,
+     market configuration in G-L — exactly as the original. */
+  var header = ["Rule Number", "Attributes", "Matching Number Threshold", "Timeframe", "", "",
+                "Company", "Active", "Dry Run", "Restrictions  (KYC Docs request)",
+                "Bonus Removal", "Active Rules"];
+  var n = Math.max(S.rules.length, S.markets.length);
+  var rows = [];
+  for (var i = 0; i < n; i++) {
+    var r = S.rules[i], m = S.markets[i];
+    rows.push([
+      r ? r.num : "", r ? r.attrs : "", r ? r.threshold : "", r ? r.timeframe : "", "", "",
+      m ? m.code : "", m ? m.active : "", m ? m.dryrun : "",
+      m ? m.kyc : "", m ? m.bonus : "", m ? m.rules : ""
+    ]);
+  }
+
+  var dryHeader = ["Date", "Company", "Rule Number", "Attributes", "Notes",
+                   "Matching Number Threshold", "Timeframe", "Date of Activation", "Status"];
+  var dryRows = S.dryruns.map(function (d) {
+    return [d.date, d.company, d.num, d.attrs, d.notes, d.threshold, d.timeframe, d.activation, d.status];
+  });
+
+  var legacyHeader = ["Bot Terminator Rule", "Rule Number"];
+  var legacyRows = S.legacy.map(function (l) { return [l.name, l.num]; });
+
+  var deactHeader = ["", "Rule Number", "market", "Date of Deactivation", "Notes"];
+  var deactRows = S.deactivated.map(function (d) {
+    return [d.name, d.num, d.market, d.date, d.notes];
+  });
+
+  return [
+    { name: "Dry Run", color: "1F4E79", header: dryHeader, rows: dryRows,
+      freeze: true, tint: "DEEAF1", empty: "No dry runs recorded." },
+    { name: "Rules", color: "7030A0", header: header, rows: rows,
+      freeze: true, autofilter: true, empty: "No rules." },
+    { name: "Old Rules name - Rule Number", color: "1F4E79",
+      header: legacyHeader, rows: legacyRows, freeze: true, empty: "No mappings." },
+    { name: "Rules Deactivated", color: "1F4E79", header: deactHeader, rows: deactRows,
+      freeze: true, tint: "DEEAF1", empty: "No deactivations recorded." }
+  ];
+}
+
+/* ---------------- import ---------------- */
+function s(v) { return v == null ? "" : String(v).trim(); }
+function tidyNum(v) {
+  var t = s(v);
+  if (t === "") return "";
+  var f = parseFloat(t);
+  return isNaN(f) ? t : String(Math.round(f * 100) / 100).replace(/\.0+$/, "");
+}
+
+function fromWorkbook(wb) {
+  var out = { rules: [], markets: [], dryruns: [], deactivated: [], legacy: [] };
+  var sh = wb.sheets;
+
+  var rulesSheet = sh["Rules"];
+  if (!rulesSheet) throw new Error("That workbook has no 'Rules' sheet.");
+  rulesSheet.rows.forEach(function (r) {
+    if (s(r[0]) !== "") {
+      out.rules.push({ num: tidyNum(r[0]), attrs: s(r[1]), threshold: s(r[2]), timeframe: s(r[3]) });
+    }
+    if (s(r[6]) !== "") {
+      out.markets.push({ code: s(r[6]), active: s(r[7]), dryrun: s(r[8]),
+                         kyc: s(r[9]), bonus: s(r[10]), rules: s(r[11]) });
+    }
+  });
+
+  if (sh["Dry Run"]) {
+    sh["Dry Run"].rows.forEach(function (r) {
+      if (!r.join("").trim()) return;
+      out.dryruns.push({ date: s(r[0]), company: s(r[1]), num: tidyNum(r[2]), attrs: s(r[3]),
+                         notes: s(r[4]), threshold: s(r[5]), timeframe: s(r[6]),
+                         activation: s(r[7]), status: s(r[8]) });
+    });
+  }
+  if (sh["Rules Deactivated"]) {
+    sh["Rules Deactivated"].rows.forEach(function (r) {
+      if (!r.join("").trim()) return;
+      out.deactivated.push({ name: s(r[0]), num: tidyNum(r[1]), market: s(r[2]),
+                             date: s(r[3]), notes: s(r[4]) });
+    });
+  }
+  if (sh["Old Rules name - Rule Number"]) {
+    sh["Old Rules name - Rule Number"].rows.forEach(function (r) {
+      if (s(r[0]) === "") return;
+      out.legacy.push({ name: s(r[0]), num: tidyNum(r[1]) });
+    });
+  }
+  return out;
+}
+
+root.RulesModule = {
+  init: init, state: state, dirty: dirty, touch: touch, resetDirty: resetDirty,
+  parseRuleList: parseRuleList, formatRuleList: formatRuleList,
+  marketsForRule: marketsForRule, rulesForMarket: rulesForMarket,
+  orphanRuleNumbers: orphanRuleNumbers, unusedRules: unusedRules,
+  isDeactivated: isDeactivated, stats: stats,
+  addRule: addRule, updateRule: updateRule, deleteRule: deleteRule,
+  addMarket: addMarket, updateMarket: updateMarket, deleteMarket: deleteMarket,
+  addRow: addRow, updateRow: updateRow, deleteRow: deleteRow,
+  setRuleForMarket: setRuleForMarket,
+  buildSheets: buildSheets, fromWorkbook: fromWorkbook
+};
+
+})(typeof module !== "undefined" && module.exports ? module.exports : (typeof window !== "undefined" ? window : this));
+
+</script>
+
+<script>
+"use strict";
+var Csv = window.CsvCore, Core = window.RoutineCore, Xlsx = window.XlsxWriter;
+var RESULT = null, TBL = null, SOURCE = "", MAX_ROWS = 5000;
+
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function fmt(n){ return Number(n).toLocaleString("en-GB"); }
+function cohClass(c){ return c>=65?"hot":(c>=38?"mid":""); }
+function fig(big,label,cls){ return "<div class='fig "+(cls||"")+"'><b>"+big+"</b><span>"+label+"</span></div>"; }
+function wait(ms){ return new Promise(function(r){ setTimeout(r, ms||0); }); }
+
+/* ---------- tasks and navigation ---------- */
+var TASKS = {
+  home:    { label: "Tasks", panes: [] },
+  routine: { label: "Routine", panes: [
+      { pane: "run",    label: "Run" },
+      { pane: "sheets", label: "Report sheets", needsRun: true },
+      { pane: "gangs",  label: "Potential gangs", needsRun: true, tally: "t-gangs" },
+      { pane: "docs",   label: "How it works" } ] },
+  rules:   { label: "Bot Terminator", panes: [
+      { pane: "r-overview", label: "Overview" },
+      { pane: "r-rules",    label: "Rules",         tally: "t-rules" },
+      { pane: "r-markets",  label: "Markets",       tally: "t-markets" },
+      { pane: "r-dry",      label: "Dry runs",      tally: "t-dry" },
+      { pane: "r-deact",    label: "Deactivated",   tally: "t-deact" },
+      { pane: "r-legacy",   label: "Legacy names" } ] }
+};
+var CURRENT_TASK = "home";
+
+function renderNav(){
+  var t = TASKS[CURRENT_TASK];
+  $("task-name").textContent = t.label;
+  $("back").hidden = (CURRENT_TASK === "home");
+  var active = document.querySelector('.pane[data-active="true"]');
+  var activePane = active ? active.getAttribute("data-pane") : null;
+  $("nav").innerHTML = t.panes.map(function(p){
+    var off = p.needsRun && !RESULT;
+    return "<button data-pane='"+p.pane+"'"+(off?" disabled":"")+
+           (p.pane===activePane?" aria-current='true'":"")+">"+esc(p.label)+
+           (p.tally?" <span class='tally' id='"+p.tally+"'></span>":"")+"</button>";
+  }).join("");
+  refreshTallies();
+}
+
+function refreshTallies(){
+  if (RESULT && $("t-gangs")) $("t-gangs").textContent = allGangs().length || "";
+  if (window.RulesModule && RulesModule.state()){
+    var st = RulesModule.stats();
+    if ($("t-rules"))   $("t-rules").textContent = st.rules;
+    if ($("t-markets")) $("t-markets").textContent = st.markets;
+    if ($("t-dry"))     $("t-dry").textContent = st.dryruns;
+    if ($("t-deact"))   $("t-deact").textContent = st.deactivated;
+  }
+}
+
+function showPane(name){
+  Array.prototype.forEach.call(document.querySelectorAll(".pane"), function(p){
+    var mine = p.getAttribute("data-task")===CURRENT_TASK || p.getAttribute("data-task")==="home";
+    p.setAttribute("data-active", (mine && p.getAttribute("data-pane")===name) ? "true":"false");
+  });
+  Array.prototype.forEach.call(document.querySelectorAll("#nav button"), function(x){
+    x.setAttribute("aria-current", x.getAttribute("data-pane")===name ? "true":"false");
+  });
+  if (name==="ask") initAsk(CURRENT_TASK);
+}
+
+function showTask(name){
+  CURRENT_TASK = name;
+  if (name === "rules" && window.RulesModule && !RulesModule.state()) initRules();
+  renderNav();
+  var first = TASKS[name].panes.length ? TASKS[name].panes[0].pane : "home";
+  showPane(first);
+  if (name === "rules") renderAllRules();
+  window.scrollTo(0,0);
+}
+
+$("nav").addEventListener("click", function(e){
+  var b = e.target.closest("button[data-pane]");
+  if (!b || b.disabled) return;
+  showPane(b.getAttribute("data-pane"));
+});
+$("back").addEventListener("click", function(){ showTask("home"); });
+document.addEventListener("click", function(e){
+  var c = e.target.closest("[data-go]");
+  if (c) showTask(c.getAttribute("data-go"));
+});
+
+function goTo(name){ showPane(name); }
+
+/* ---------- file intake ---------- */
+$("pick").addEventListener("click", function(){ $("file").click(); });
+$("file").addEventListener("change", function(e){ if (e.target.files[0]) start(e.target.files[0]); });
+$("again").addEventListener("click", function(){
+  $("stage-done").hidden = true; $("stage-drop").hidden = false;
+  $("file").value = ""; $("err").innerHTML = "";
+});
+
+var drop = $("drop");
+["dragenter","dragover"].forEach(function(ev){
+  drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.add("over"); });
+});
+["dragleave","drop"].forEach(function(ev){
+  drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.remove("over"); });
+});
+drop.addEventListener("drop", function(e){
+  var f = e.dataTransfer.files[0];
+  if (f) start(f);
+});
+
+function fail(msg){
+  $("stage-work").hidden = true; $("stage-drop").hidden = false;
+  $("err").innerHTML = "<div class='err'>"+esc(msg)+"</div>";
+}
+
+/* ---------- the run ---------- */
+function start(file){
+  $("err").innerHTML = "";
+  $("stage-drop").hidden = true;
+  $("stage-done").hidden = true;
+  $("stage-work").hidden = false;
+  SOURCE = file.name;
+  $("work-title").textContent = "Reading " + file.name;
+
+  var fr = new FileReader();
+  fr.onerror = function(){ fail("Could not read that file. Copy it out of the shared drive and try again."); };
+  fr.onload = function(){ run(String(fr.result)); };
+  fr.readAsText(file, "UTF-8");
+}
+
+async function run(text){
+  var rows;
+  try { rows = Csv.parseCSV(text); }
+  catch (e) { return fail("That file could not be parsed as CSV."); }
+
+  if (rows.length < 2) return fail("That file has a header but no rows.");
+  var header = rows[0].map(function(h){ return String(h).trim(); });
+  var body = rows.slice(1);
+
+  if (header.indexOf("Account Login") === -1 && header.indexOf("Account Email") === -1) {
+    return fail("This does not look like a TMX export — no 'Account Login' or 'Account Email' column. " +
+                "Check you exported the Daily_Registrations saved search.");
+  }
+
+  $("work-title").textContent = "Analysing " + fmt(body.length) + " registrations";
+  $("work-sub").textContent = "Scoring, clustering and pattern-matching. A few seconds for a large export.";
+  await wait(40);
+
+  try {
+    RESULT = Core.runRoutine(header, body);
+  } catch (e) {
+    return fail("The analysis stopped: " + (e && e.message ? e.message : e));
+  }
+
+  TBL = RESULT.table;
+  await wait(30);
+  finish(body.length);
+}
+
+function finish(total){
+  var s = RESULT.stats;
+  $("stage-work").hidden = true;
+  $("stage-done").hidden = false;
+  $("run-src").textContent = SOURCE;
+  $("run-when").textContent = new Date().toLocaleString("en-GB");
+
+  $("figs").innerHTML =
+    fig(fmt(s.total), "registrations") +
+    fig(fmt(s.high), "high risk", "alarm") +
+    fig(fmt(s.patternGangs), "potential gangs", "alarm") +
+    fig(fmt(s.bshClusters + s.chClusters), "bot clusters") +
+    fig(fmt(s.signalGangs), "shared-signal gangs") +
+    fig(fmt(s.low), "low risk", "good");
+
+  var all = allGangs();
+  renderNav();   // the sheets and gangs tabs unlock once a run exists
+
+  var top = all.slice().sort(function(a,b){ return b.size-a.size || b.cohesion-a.cohesion; }).slice(0,20);
+  var h = "<thead><tr><th>Gang ID</th><th>Pass</th><th>Cohesion</th><th>Accounts</th><th>Email pattern</th></tr></thead><tbody>";
+  top.forEach(function(g){
+    h += "<tr><td class='m'>"+esc(g.pgid)+"</td><td>"+esc(g.label)+"</td>"+
+         "<td><span class='chip "+cohClass(g.cohesion)+"'>"+g.cohesion+"</span></td>"+
+         "<td>"+fmt(g.size)+"</td><td class='m'>"+esc(g.email_pattern)+"</td></tr>";
+  });
+  $("topgangs").innerHTML = h + "</tbody>";
+
+  buildSheetPicker();
+  fillCountries();
+  paintGangs();
+  $("dl-note").textContent = "";
+}
+
+/* flatten the two passes into one list with stable display IDs */
+function allGangs(){
+  var out = [], counter = 1;
+  RESULT.gangSources.forEach(function(src){
+    src.gangs.forEach(function(g){
+      out.push({ pgid: src.label+"-PG"+String(counter++).padStart(3,"0"),
+                 label: src.label, cohesion: g.cohesion, size: g.size,
+                 email_pattern: g.email_pattern, login_pattern: g.login_pattern,
+                 rows: g.rows, attrs: g.attrs });
+    });
+  });
+  return out;
+}
+
+/* ---------- download ---------- */
+$("dl").addEventListener("click", async function(){
+  var btn = this;
+  btn.disabled = true;
+  var original = btn.textContent;
+  btn.textContent = "Building the workbook…";
+  $("dl-note").textContent = "Large files take a few seconds. The tab may look busy while it works.";
+  await wait(40);
+  try {
+    var bytes = await Xlsx.buildAsync(RESULT.sheets);
+    var base = SOURCE.replace(/\.[^.]+$/, "");
+    var d = new Date();
+    var stamp = d.getFullYear() + String(d.getMonth()+1).padStart(2,"0") + String(d.getDate()).padStart(2,"0") +
+                "_" + String(d.getHours()).padStart(2,"0") + String(d.getMinutes()).padStart(2,"0");
+    saveBlob(new Blob([bytes], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),
+             "ROUTINE_" + base + "_" + stamp + ".xlsx");
+    $("dl-note").textContent = "Saved. Copy it into G:\\Shared drives\\Risk_Control_Routine for the team.";
+  } catch (e) {
+    $("dl-note").textContent = "The workbook could not be built: " + (e && e.message ? e.message : e);
+  }
+  btn.disabled = false;
+  btn.textContent = original;
+});
+
+$("dl-csv").addEventListener("click", function(){
+  var sheet = RESULT.sheets.filter(function(s){ return s.name.indexOf("Potential Gangs") !== -1; })[0];
+  if (!sheet || !sheet.rows.length) { $("dl-note").textContent = "No potential gangs in this run."; return; }
+  saveBlob(new Blob([Csv.toCSV(sheet.header, sheet.rows)], {type:"text/csv;charset=utf-8"}),
+           "potential_gangs_" + new Date().toISOString().slice(0,10) + ".csv");
+});
+
+function saveBlob(blob, name){
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+}
+
+/* ---------- gangs pane ---------- */
+function fillCountries(){
+  var sel = $("f-country");
+  sel.innerHTML = '<option value="">All</option>';
+  if (!TBL.hasCol("Account Address Country")) { sel.disabled = true; return; }
+  sel.disabled = false;
+  var seen = {};
+  allGangs().forEach(function(g){
+    g.rows.forEach(function(ri){
+      var v = String(TBL.get(TBL.rows[ri], "Account Address Country")).trim();
+      if (v) seen[v] = true;
+    });
+  });
+  Object.keys(seen).sort().forEach(function(v){
+    var o = document.createElement("option"); o.value = v; o.textContent = v; sel.appendChild(o);
+  });
+}
+
+function paintGangs(){
+  if (!RESULT) return;
+  var minCoh = +$("f-coh").value, minSize = +$("f-size").value;
+  var pass = $("f-pass").value, country = $("f-country").value;
+  var q = $("f-q").value.trim().toLowerCase();
+
+  var groups = [], totalRows = 0;
+  allGangs().forEach(function(g){
+    if (g.cohesion < minCoh || g.size < minSize) return;
+    if (pass && g.label !== pass) return;
+    var keep = g.rows;
+    if (country) keep = keep.filter(function(ri){
+      return String(TBL.get(TBL.rows[ri], "Account Address Country")).trim() === country;
+    });
+    if (q) keep = keep.filter(function(ri){ return TBL.rows[ri].join(" ").toLowerCase().indexOf(q) !== -1; });
+    if (keep.length) { groups.push({ g: g, rows: keep }); totalRows += keep.length; }
+  });
+
+  var brand = RESULT.brandCol;
+  // the device attributes the two passes group on, when the export carries them
+  var extra = ["Browser Language", "Screen Resolution", "Browser String Hash", "Canvas Hash"]
+                .filter(function(c){ return TBL.hasCol(c); });
+  var h = "<thead><tr><th>Account</th><th>Email</th><th>Country</th>" +
+          (brand ? "<th>Brand</th>" : "") + "<th>Registered</th>" +
+          extra.map(function(c){ return "<th>"+esc(c)+"</th>"; }).join("") +
+          "</tr></thead><tbody>";
+  var shown = 0;
+  for (var i = 0; i < groups.length && shown < MAX_ROWS; i++){
+    var g = groups[i].g, rows = groups[i].rows;
+    var hue = (i * 47) % 360, span = (brand ? 5 : 4) + extra.length;
+    h += "<tr class='grouphead'><td colspan='"+span+"'>"+esc(g.pgid)+
+         " <span class='chip "+cohClass(g.cohesion)+"'>cohesion "+g.cohesion+"</span> "+
+         "<span class='meta'>"+fmt(rows.length)+" of "+fmt(g.size)+" accounts &middot; "+esc(g.label)+
+         " pass &middot; "+esc(g.email_pattern)+"</span></td></tr>";
+    for (var j = 0; j < rows.length && shown < MAX_ROWS; j++){
+      var r = TBL.rows[rows[j]];
+      h += "<tr class='member' style='--edge:hsl("+hue+",42%,58%)'>"+
+           "<td class='m'>"+esc(TBL.get(r,"Account Login"))+"</td>"+
+           "<td class='m'>"+esc(TBL.get(r,"Account Email"))+"</td>"+
+           "<td>"+esc(TBL.get(r,"Account Address Country"))+"</td>"+
+           (brand ? "<td>"+esc(TBL.get(r,brand))+"</td>" : "")+
+           "<td>"+esc(TBL.get(r,"Event Time"))+"</td>"+
+           extra.map(function(c){ return "<td class='m'>"+esc(TBL.get(r,c))+"</td>"; }).join("")+
+           "</tr>";
+      shown++;
+    }
+  }
+  $("gtable").innerHTML = h + "</tbody>";
+  $("g-count").innerHTML = "<b>"+fmt(groups.length)+"</b> groups &middot; <b>"+fmt(totalRows)+
+    "</b> accounts match" + (shown < totalRows ? " &middot; showing the first "+fmt(shown)+", narrow the filters to see the rest" : "");
+}
+
+["f-coh","f-size"].forEach(function(id){
+  $(id).addEventListener("input", function(){
+    $(id === "f-coh" ? "v-coh" : "v-size").textContent = this.value;
+    paintGangs();
+  });
+});
+["f-pass","f-country"].forEach(function(id){ $(id).addEventListener("change", paintGangs); });
+var qt; $("f-q").addEventListener("input", function(){ clearTimeout(qt); qt = setTimeout(paintGangs, 180); });
+$("reset").addEventListener("click", function(){
+  $("f-coh").value = 0; $("v-coh").textContent = "0";
+  $("f-size").value = 5; $("v-size").textContent = "5";
+  $("f-pass").value = ""; $("f-country").value = ""; $("f-q").value = "";
+  paintGangs();
+});
+
+/* ---------- sheets pane ---------- */
+function buildSheetPicker(){
+  var sel = $("s-pick");
+  sel.innerHTML = "";
+  RESULT.sheets.forEach(function(s, i){
+    var o = document.createElement("option");
+    o.value = i; o.textContent = s.name + "  (" + fmt(s.rows.length) + " rows)";
+    sel.appendChild(o);
+  });
+  sel.value = String(RESULT.sheets.length - 1);   // open on Potential Gangs
+  $("s-country").value = ""; $("s-q").value = "";
+  fillSheetFilters(RESULT.sheets[RESULT.sheets.length - 1]);
+  fillSizeSlider(RESULT.sheets[RESULT.sheets.length - 1]);
+  paintSheet();
+}
+
+/* Country and Brand sit in different columns on different sheets, and several
+   sheets do not carry them at all. Each sheet keeps a hidden index back to the
+   original TMX row (srcRows), so both filters work everywhere without adding
+   columns to the workbook. */
+function sheetColIndex(sheet, name){
+  if (!name) return -1;
+  for (var i = 0; i < sheet.header.length; i++){
+    if (String(sheet.header[i]).trim() === name) return i;
+  }
+  return -1;
+}
+
+/* The same idea goes by four names across the sheets. */
+var SIZE_COLS = ["Group Size", "Cluster Size", "Prefix Group Size", "Account Count"];
+
+function sheetSizeIndex(sheet){
+  for (var i = 0; i < SIZE_COLS.length; i++){
+    var k = sheetColIndex(sheet, SIZE_COLS[i]);
+    if (k !== -1) return k;
+  }
+  return -1;
+}
+
+function isAllRegistrations(sheet){
+  return String(sheet.name).indexOf("All Registrations") !== -1;
+}
+
+function fillSizeSlider(sheet){
+  var wrap = $("tool-size"), sl = $("s-size");
+  var idx = isAllRegistrations(sheet) ? -1 : sheetSizeIndex(sheet);
+  if (idx === -1 || !sheet.rows.length){
+    wrap.hidden = true;              // All Registrations has no group concept
+    sl.value = sl.min = 1; sl.max = 2;
+    return;
+  }
+  var lo = Infinity, hi = -Infinity;
+  for (var i = 0; i < sheet.rows.length; i++){
+    var v = Number(sheet.rows[i][idx]);
+    if (!isFinite(v)) continue;
+    if (v < lo) lo = v;
+    if (v > hi) hi = v;
+  }
+  if (!isFinite(lo)) { wrap.hidden = true; return; }
+  wrap.hidden = false;
+  var keep = Number(sl.value);
+  sl.min = lo;
+  sl.max = Math.max(hi, lo + 1);
+  sl.value = (keep >= lo && keep <= hi) ? keep : lo;   // hold the setting where it still fits
+  $("v-ssize").textContent = sl.value;
+  var label = sheet.header[idx];
+  $("tool-size").querySelector("label").childNodes[0].nodeValue = "Minimum " +
+    (label === "Account Count" ? "accounts" : label.toLowerCase()) + " ";
+}
+
+function sheetHasField(sheet, name){
+  if (!name) return false;
+  return sheetColIndex(sheet, name) !== -1 || (!!sheet.srcRows && TBL.hasCol(name));
+}
+
+function sheetValue(sheet, rowIdx, name){
+  var i = sheetColIndex(sheet, name);
+  if (i !== -1){
+    var v = sheet.rows[rowIdx][i];
+    return String(v == null ? "" : v).trim();
+  }
+  if (sheet.srcRows && TBL.hasCol(name)){
+    return String(TBL.get(TBL.rows[sheet.srcRows[rowIdx]], name)).trim();
+  }
+  return "";
+}
+
+function fillSheetFilters(sheet){
+  var pairs = [["s-country", "Account Address Country"]];
+  pairs.forEach(function(pair){
+    var sel = $(pair[0]), field = pair[1], keep = sel.value;
+    sel.innerHTML = '<option value="">All</option>';
+    if (!sheetHasField(sheet, field)){
+      sel.disabled = true;
+      sel.title = "Not available on this sheet";
+      sel.value = "";
+      return;
+    }
+    sel.disabled = false;
+    sel.title = "";
+    var seen = {};
+    for (var i = 0; i < sheet.rows.length; i++){
+      var v = sheetValue(sheet, i, field);
+      if (v) seen[v] = true;
+    }
+    Object.keys(seen).sort().forEach(function(v){
+      var o = document.createElement("option");
+      o.value = v; o.textContent = v;
+      sel.appendChild(o);
+    });
+    if (keep && seen[keep]) sel.value = keep;   // keep the choice when switching sheets
+  });
+}
+
+function paintSheet(){
+  if (!RESULT) return;
+  var s = RESULT.sheets[+$("s-pick").value];
+  if (!s.header.length || !s.rows.length){
+    $("stable").innerHTML = "";
+    $("s-count").textContent = s.empty || "Nothing to show on this sheet.";
+    return;
+  }
+  var q = $("s-q").value.trim().toLowerCase();
+  var country = $("s-country").disabled ? "" : $("s-country").value;
+
+  var sizeIdx = ($("tool-size").hidden || isAllRegistrations(s)) ? -1 : sheetSizeIndex(s);
+  var minSize = sizeIdx === -1 ? 0 : Number($("s-size").value);
+
+  var idx = [];
+  for (var i = 0; i < s.rows.length; i++){
+    if (sizeIdx !== -1 && Number(s.rows[i][sizeIdx]) < minSize) continue;
+    if (country && sheetValue(s, i, "Account Address Country") !== country) continue;
+    if (q && s.rows[i].join(" ").toLowerCase().indexOf(q) === -1) continue;
+    idx.push(i);
+  }
+
+  var shown = Math.min(idx.length, MAX_ROWS);
+  var h = "<thead><tr>" + s.header.map(function(c){ return "<th>"+esc(c)+"</th>"; }).join("") + "</tr></thead><tbody>";
+  for (var k = 0; k < shown; k++){
+    var row = s.rows[idx[k]];
+    var cls = (s.riskLevels && s.riskLevels[idx[k]] === "HIGH") ? " class='high'" : "";
+    h += "<tr"+cls+">" + row.map(function(v){ return "<td>"+esc(v)+"</td>"; }).join("") + "</tr>";
+  }
+  $("stable").innerHTML = h + "</tbody>";
+
+  var filtered = idx.length !== s.rows.length;
+  $("s-count").innerHTML = "<b>"+fmt(idx.length)+"</b> rows" +
+    (filtered ? " of " + fmt(s.rows.length) : "") +
+    (shown < idx.length ? " &middot; showing the first "+fmt(shown) : "") +
+    (s.subtitle ? " &middot; " + esc(s.subtitle) : "");
+}
+
+$("s-pick").addEventListener("change", function(){
+  var sheet = RESULT.sheets[+this.value];
+  fillSheetFilters(sheet);
+  fillSizeSlider(sheet);
+  paintSheet();
+});
+$("s-size").addEventListener("input", function(){
+  $("v-ssize").textContent = this.value;
+  paintSheet();
+});
+$("s-country").addEventListener("change", paintSheet);
+$("s-reset").addEventListener("click", function(){
+  $("s-country").value = ""; $("s-q").value = "";
+  var sl = $("s-size");
+  sl.value = sl.min; $("v-ssize").textContent = sl.value;
+  paintSheet();
+});
+var st; $("s-q").addEventListener("input", function(){ clearTimeout(st); st = setTimeout(paintSheet, 180); });
+
+/* ==================== Bot Terminator task ==================== */
+window.RULES_SEED = {"rules": [{"num": "0", "attrs": "TMX Query* + Email address NOT in Whitelist", "threshold": "1 or more", "timeframe": "-"}, {"num": "1", "attrs": "Same Registration IP+ The TMX query", "threshold": "1 or more", "timeframe": "1 day"}, {"num": "2", "attrs": "Same Device + The TMX query", "threshold": "1 or more", "timeframe": "1 day"}, {"num": "3", "attrs": "Same Registration IP", "threshold": "3 or more", "timeframe": "1 hour"}, {"num": "4", "attrs": "Same Registration IP", "threshold": "2 or more", "timeframe": "15 minutes"}, {"num": "5", "attrs": "Same Registration IP + Same Postal Code", "threshold": "1 or more", "timeframe": "1 hour"}, {"num": "6", "attrs": "Same Registration IP + Same Phone", "threshold": "1 or more", "timeframe": "1 day"}, {"num": "7", "attrs": "Same Registration IP + Email provider non-whitelist", "threshold": "1 or more", "timeframe": "1 day"}, {"num": "8", "attrs": "Same Device + Email provider non-whitelist", "threshold": "1 or more", "timeframe": "1 day"}, {"num": "9", "attrs": "Same Postal Code + Email provider non-whitelist", "threshold": "1 or more", "timeframe": "1 hour"}, {"num": "10", "attrs": "Same Phone + Email provider non whitelist", "threshold": "1 or more", "timeframe": "1 day"}, {"num": "11", "attrs": "Same Registration IP + Same first 7 consecutive phone digits", "threshold": "9 or more", "timeframe": "1 hour"}, {"num": "12", "attrs": "Same Registration IP +Levenshtein  distance in username = 1", "threshold": "2 or more", "timeframe": "1 hour"}, {"num": "13", "attrs": "Same Registration IP +Levenshtein  distance in email = 1", "threshold": "2 or more", "timeframe": "1 hour"}, {"num": "14", "attrs": "(was updated to rule 0 in order to run as the first rule)", "threshold": "-", "timeframe": "-"}, {"num": "15", "attrs": "Same DeviceID", "threshold": "3 or more", "timeframe": "1 hour"}, {"num": "16", "attrs": "Same Email domain + Levenshtein distance in username <= 2 and Levenshtein distance in email <= 2", "threshold": "2 or more", "timeframe": "1 hour"}, {"num": "17", "attrs": "Same DeviceID", "threshold": "5 or more", "timeframe": "5 days"}, {"num": "18", "attrs": "Same Date of Birth + age older than 55 (configurable value)", "threshold": "4 or more", "timeframe": "1 day"}, {"num": "19", "attrs": "Same Registration IP + Username=Email", "threshold": "3 or more", "timeframe": "1 day"}, {"num": "20", "attrs": "Same Date of Birth + Same Registration IP", "threshold": "3 or more", "timeframe": "1 day"}, {"num": "21", "attrs": "Same Email + Postal code", "threshold": "5 or more", "timeframe": "1 day"}, {"num": "22", "attrs": "Same X Phone Digits (X = 9)", "threshold": "5 or more", "timeframe": "1 day"}, {"num": "23", "attrs": "Same New Email Domain", "threshold": "3 or more", "timeframe": "1 day"}, {"num": "24", "attrs": "Same X Phone Digits (X = 9)", "threshold": "3 or more", "timeframe": "1 day"}, {"num": "25", "attrs": "Same X Phone Digits (X = 8)", "threshold": "4 or more", "timeframe": "1 day"}, {"num": "26", "attrs": "Seon Applied Rule Z + Email provider non-whitelist (Z = HC115)", "threshold": "1 or more", "timeframe": "-"}, {"num": "27", "attrs": "Seon Applied RuleZ + Email provider non-whitelist (Z = HC125)", "threshold": "1 or more", "timeframe": "-"}, {"num": "28", "attrs": "Seon Applied RuleZ + Email provider non-whitelist (Z = HC133)", "threshold": "1 or more", "timeframe": "-"}, {"num": "29", "attrs": "Blackbox score over X + Email provider non-whitelist (X = 90)", "threshold": "1 or more", "timeframe": "-"}, {"num": "30", "attrs": "Same Registration Ip + Seon Applied Rule Z (Z = HC115)", "threshold": "1 or more", "timeframe": "1 day"}, {"num": "31", "attrs": "Same Registration Ip + Seon Applied Rule Z (Z = HC125)", "threshold": "1 or more", "timeframe": "1 day"}, {"num": "32", "attrs": "Same Registration Ip + Seon Applied Rule Z (Z = HC133)", "threshold": "1 or more", "timeframe": "1 day"}, {"num": "33", "attrs": "Same Registration Ip + Blackbox score over X (X = 90)", "threshold": "1 or more", "timeframe": "1 day"}, {"num": "34", "attrs": "Same Cookie Hash + Seon Applied Rule Z (Z = HC115)", "threshold": "1 or more", "timeframe": "-"}, {"num": "35", "attrs": "Same Cookie Hash + Seon Applied Rule Z (Z = HC125)", "threshold": "1 or more", "timeframe": "-"}, {"num": "36", "attrs": "Same Cookie Hash + Seon Applied Rule Z (Z = HC133)", "threshold": "1 or more", "timeframe": "-"}, {"num": "37", "attrs": "Same Cookie Hash + Blackbox score over X (X = 90)", "threshold": "1 or more", "timeframe": "1 day"}, {"num": "38", "attrs": "Same Cookie Hash", "threshold": "2 or more", "timeframe": "1 hour"}, {"num": "39", "attrs": "Same Cookie Hash", "threshold": "4 or more", "timeframe": "5 days"}, {"num": "40", "attrs": "Same Registration IP", "threshold": "3 or more", "timeframe": "3 hours"}, {"num": "41", "attrs": "Levenshtein distance in username <= Y (Y = 2)", "threshold": "2 or more", "timeframe": "3 hours"}, {"num": "42", "attrs": "EmailConsonantsPattern", "threshold": "2 or more", "timeframe": "1 hour"}, {"num": "43", "attrs": "Same X Phone Digits (X = 8)", "threshold": "4 or more", "timeframe": "3 days"}], "markets": [{"code": "BG", "active": "YES", "dryrun": "NO", "kyc": "NO", "bonus": "YES", "rules": "0, 1, 3, 4, 6, 7, 10, 11, 12, 13, 16, 18, 20, 22, 23,24,25, 26, 27, 28, 29, 30, 31, 32, 33, 40"}, {"code": "BP", "active": "YES", "dryrun": "NO", "kyc": "NO", "bonus": "YES", "rules": "2, 3, 6, 7, 8, 10, 11, 12, 13, 16, 19, 20, 22, 23, 34, 35, 36, 37, 40"}, {"code": "BC", "active": "YES", "dryrun": "NO", "kyc": "NO", "bonus": "YES", "rules": "0, 1, 2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 22, 23, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 37, 38, 39, 40"}, {"code": "BE", "active": "NO", "dryrun": "NO", "kyc": "YES", "bonus": "NO", "rules": "0, 1, 2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 20, 22, 23, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 37, 38, 39, 40"}, {"code": "BK", "active": "NO", "dryrun": "NO", "kyc": "YES", "bonus": "NO", "rules": "0, 1, 2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 20, 22, 23, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 37, 38, 39, 40"}, {"code": "BR", "active": "YES", "dryrun": "NO", "kyc": "NO", "bonus": "YES", "rules": "0, 1, 2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 22, 23, 40"}, {"code": "CL", "active": "YES", "dryrun": "NO", "kyc": "NO", "bonus": "YES", "rules": "0, 1, 2, 3, 4, 6, 8, 10, 11, 13, 15, 16, 17, 18, 19, 20, 22, 23, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 37, 38, 39, 40"}, {"code": "CZ", "active": "YES", "dryrun": "NO", "kyc": "NO", "bonus": "YES", "rules": "1, 2, 3, 12, 13, 16, 20, 22, 23, 30, 31, 32, 33, 34, 35, 36, 37, 37, 40"}, {"code": "DE", "active": "YES", "dryrun": "NO", "kyc": "NO", "bonus": "YES", "rules": "1, 2, 3, 12, 13, 16, 20, 22, 23, 30, 31, 32, 33, 34, 35, 36, 37, 37, 40"}, {"code": "DK", "active": "YES", "dryrun": "NO", "kyc": "YES", "bonus": "NO", "rules": "0, 1, 2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 20, 22, 23, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 37, 38, 39 , 40"}, {"code": "EC", "active": "YES", "dryrun": "NO", "kyc": "NO", "bonus": "YES", "rules": "0, 1, 2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 22, 23, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 37, 38, 39, 40"}, {"code": "MX", "active": "YES", "dryrun": "NO", "kyc": "NO", "bonus": "YES", "rules": "1, 2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 16, 19, 20, 22, 23,24,25, 30, 31, 32, 33, 34, 35, 36, 37, 37, 40"}, {"code": "ND", "active": "YES", "dryrun": "NO", "kyc": "NO", "bonus": "YES", "rules": "0, 1, 2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 22, 23, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 37, 38, 39, 40"}, {"code": "NG", "active": "YES", "dryrun": "NO", "kyc": "NO", "bonus": "YES", "rules": "0, 1, 2, 3, 4, 6, 8, 10, 15, 16, 17, 18, 19, 20, 22, 23, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 37, 38, 39, 40, 41, 42,44,45"}, {"code": "ON", "active": "YES", "dryrun": "NO", "kyc": "NO", "bonus": "YES", "rules": "1, 2, 20, 22, 23, 30, 31, 32, 33, 34, 35, 36, 37"}, {"code": "PE", "active": "YES", "dryrun": "NO", "kyc": "NO", "bonus": "YES", "rules": "0, 1, 2, 3, 4, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 37, 38, 39, 40,43,44,45"}, {"code": "PT", "active": "YES", "dryrun": "NO", "kyc": "NO", "bonus": "YES", "rules": "0, 1, 2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 16, 17, 18, 19, 20, 21, 22, 23,24,25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 37, 39, 40"}, {"code": "RO", "active": "YES", "dryrun": "NO", "kyc": "NO", "bonus": "YES", "rules": "0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 20, 22, 23,24,25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 37, 38, 39, 40, 42"}, {"code": "CO", "active": "YES", "dryrun": "NO", "kyc": "NO", "bonus": "YES", "rules": "0, 1, 2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 22, 23, 24,25,26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40"}, {"code": "PH", "active": "NO", "dryrun": "NO", "kyc": "NO", "bonus": "NO", "rules": "0, 1, 2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,25,26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41"}, {"code": "GH", "active": "YES", "dryrun": "NO", "kyc": "NO", "bonus": "YES", "rules": "2,15,25"}], "dryruns": [{"date": "2025-09-06", "company": "CO", "num": "24", "attrs": "Same X Phone Digits (X = 9)", "notes": "", "threshold": "3 or more", "timeframe": "1 day", "activation": "2025-10-06", "status": "Active"}, {"date": "2025-09-06", "company": "CO", "num": "25", "attrs": "Same X Phone Digits (X = 8)", "notes": "", "threshold": "4 or more", "timeframe": "1 day", "activation": "2025-10-06", "status": "Active"}, {"date": "2025-05-08", "company": "PE", "num": "24", "attrs": "Same X Phone Digits (X = 9)", "notes": "", "threshold": "3 or more", "timeframe": "1 day", "activation": "2025-10-06", "status": "Active"}, {"date": "2025-05-08", "company": "PE", "num": "25", "attrs": "Same X Phone Digits (X = 8)", "notes": "", "threshold": "4 or more", "timeframe": "1 day", "activation": "2025-10-06", "status": "Active"}, {"date": "19/8/2025", "company": "RO", "num": "18", "attrs": "Same Date of Birth + age older than 19 (configurable value)", "notes": "Different Attibute (Age >19)", "threshold": "4 or more", "timeframe": "1 day", "activation": "", "status": "Active"}, {"date": "2025-05-09", "company": "NG", "num": "42", "attrs": "EmailConsonantsPattern", "notes": "", "threshold": "2 or more", "timeframe": "1 hour", "activation": "2025-06-10", "status": "Active"}, {"date": "2025-05-09", "company": "PE", "num": "43", "attrs": "Same X Phone Digits (X = 8)", "notes": "Checked 15/9 - 3/140 False Positives - Review again in 3 days", "threshold": "4 or more", "timeframe": "3 days", "activation": "27/09/2025", "status": "Active"}, {"date": "2026-02-03", "company": "GH", "num": "22", "attrs": "Same X Phone Digits (X = 9)", "notes": "", "threshold": "5 or more", "timeframe": "1 day", "activation": "", "status": "Deactivated"}, {"date": "2026-02-03", "company": "GH", "num": "25", "attrs": "Same X Phone Digits (X = 8)", "notes": "", "threshold": "4 or more", "timeframe": "1 day", "activation": "2025-03-04", "status": "Active"}, {"date": "2025-03-03", "company": "GH", "num": "15", "attrs": "Same DeviceID", "notes": "", "threshold": "3 or more", "timeframe": "1 hour", "activation": "2025-03-04", "status": "Active"}, {"date": "2025-03-03", "company": "GH", "num": "2", "attrs": "Same Device + The TMX query", "notes": "", "threshold": "1 or more", "timeframe": "1 day", "activation": "2025-03-04", "status": "Active"}], "deactivated": [{"name": "Same X Phone Digits (X = 8)", "num": "25", "market": "PE", "date": "18/06/2026", "notes": "deactivation for mundial / Adjustment του rule 25, απο 4 or more accounts που ειναι τωρα το threshold ---> σε 3 or more accounts"}, {"name": "SameBirthdayOlderThanYInXOrMoreAccounts_X3_Y55_Z_in1440mins", "num": "18", "market": "BR", "date": "26/06/2026", "notes": "deactivation for mundial"}, {"name": "SameXPhoneDigitsInYOrMoreAccounts_X9_Y5_Z_in1440mins", "num": "22", "market": "BP", "date": "17/06/2026", "notes": "deactivation for mundial"}, {"name": "SameRegistrationIpInXOrMoreAccounts_X2_Y_Z_in60mins", "num": "3", "market": "BP", "date": "17/06/2026", "notes": "deactivation for mundial"}, {"name": "SameXPhoneDigitsInYOrMoreAccounts_X8_Y3_Z_in4320mins", "num": "43", "market": "PE", "date": "18/06/2026", "notes": "Adjustment του rule 25, απο 4 or more accounts που ειναι τωρα το threshold ---> σε 3 or more accounts"}, {"name": "SameXPhoneDigitsInYOrMoreAccounts_X8_Y4_Z_in1440mins", "num": "25", "market": "CO", "date": "2026-07-03", "notes": "deactivation for mundial"}], "legacy": [{"name": "SameDeviceEmailDomainNotWhitelisted_X_Y_in1440mins", "num": "8"}, {"name": "SameDeviceEmailDomainNotWhitelisted_X_Y_Z_in1440mins", "num": "8"}, {"name": "SameDeviceInXOrMoreAccounts_X4_Y_in7200mins", "num": "17"}, {"name": "SameDeviceInXOrMoreAccounts_X4_Y_Z_in7200mins", "num": "17"}, {"name": "SameDeviceTmxQuery_X_Y_in1440mins", "num": "2"}, {"name": "SameDeviceTmxQuery_X_Y_Z_in1440mins", "num": "2"}, {"name": "SameEmailDomainLevenshteinUsernameLevenshteinEmail_X1_Y_in60mins", "num": "16"}, {"name": "SameEmailDomainLevenshteinUsernameLevenshteinEmail_X1_Y_Z_in60mins", "num": "16"}, {"name": "SamePhoneEmailDomainNotWhitelisted_X_Y_in1440mins", "num": "10"}, {"name": "SamePhoneEmailDomainNotWhitelisted_X_Y_Z_in1440mins", "num": "10"}, {"name": "SamePostCodeEmailDomainInXOrMoreAccounts_X4_Y_in1440mins", "num": "21"}, {"name": "SamePostCodeEmailDomainInXOrMoreAccounts_X4_Y_Z_in1440mins", "num": "21"}, {"name": "SameRegistrationIpEmailDomainNotWhitelisted_X_Y_in1440mins", "num": "7"}, {"name": "SameRegistrationIpEmailDomainNotWhitelisted_X_Y_Z_in1440mins", "num": "7"}, {"name": "SameRegistrationIpInXOrMoreAccounts_X1_Y_in15mins", "num": "4"}, {"name": "SameRegistrationIpInXOrMoreAccounts_X1_Y_Z_in15mins", "num": "4"}, {"name": "SameRegistrationIpInXOrMoreAccounts_X2_Y_in60mins", "num": "3"}, {"name": "SameRegistrationIpInXOrMoreAccounts_X2_Y_Z_in60mins", "num": "3"}, {"name": "SameRegistrationIpInXOrMoreAccountsUsernameLevenshteinEmail_X2_Y0_in1440mins", "num": "-"}, {"name": "SameRegistrationIpInXOrMoreAccountsUsernameLevenshteinEmail_X2_Y0_Z_in1440mins", "num": "-"}, {"name": "SameRegistrationIpLevenshteinEmail_X1_Y_in60mins", "num": "13"}, {"name": "SameRegistrationIpLevenshteinEmail_X1_Y_Z_in60mins", "num": "13"}, {"name": "SameRegistrationIpLevenshteinUsername_X1_Y_in60mins", "num": "12"}, {"name": "SameRegistrationIpLevenshteinUsername_X1_Y_Z_in60mins", "num": "12"}, {"name": "SameRegistrationIpPhone_X_Y_in1440mins", "num": "6"}, {"name": "SameRegistrationIpPhone_X_Y_Z_in1440mins", "num": "6"}, {"name": "SameRegistrationIpTmxQuery_X_Y_in1440mins", "num": "1"}, {"name": "SameRegistrationIpTmxQuery_X_Y_Z_in1440mins", "num": "1"}, {"name": "SameRegistrationIpXPhoneDigits_X8_Y_in60mins", "num": "11"}, {"name": "SameRegistrationIpXPhoneDigits_X8_Y_Z_in60mins", "num": "11"}, {"name": "SameTmxQueryEmailDomainNotWhitelisted_X_Y_in0mins", "num": "0"}, {"name": "SameTmxQueryEmailDomainNotWhitelisted_X_Y_Z_in0mins", "num": "0"}, {"name": "SameXPhoneDigitsInYOrMoreAccounts_X8_Y4_in1440mins", "num": "25"}, {"name": "SameXPhoneDigitsInYOrMoreAccounts_X8_Y4_Z_in1440mins", "num": "25"}, {"name": "SameXPhoneDigitsInYOrMoreAccounts_X9_Y3_in1440mins", "num": "24"}, {"name": "SameXPhoneDigitsInYOrMoreAccounts_X9_Y3_Z_in1440mins", "num": "24"}, {"name": "SameXPhoneDigitsInYOrMoreAccounts_X9_Y5_in1440mins", "num": "24"}, {"name": "SameXPhoneDigitsInYOrMoreAccounts_X9_Y5_Z_in1440mins", "num": "24"}]};
+
+/* ============================================================
+   rules_ui.js — screens for the Bot Terminator task.
+   One generic editable-table renderer drives all five tables.
+   ============================================================ */
+var RM = window.RulesModule;
+var LOADED_SNAPSHOT = null;   // what we last imported, for Revert
+var EDIT = { table: null, index: -1, isNew: false };
+
+function initRules(){
+  RM.init(window.RULES_SEED);
+  LOADED_SNAPSHOT = JSON.parse(JSON.stringify(window.RULES_SEED));
+}
+
+/* column definitions per table */
+var RTABLES = {
+  rules: {
+    target: "rt-rules", count: "rc-rules", search: "rq-rules",
+    cols: [
+      { f:"num",       label:"Rule #",    w:"70px", mono:true },
+      { f:"attrs",     label:"Attributes" },
+      { f:"threshold", label:"Threshold", w:"110px" },
+      { f:"timeframe", label:"Timeframe", w:"100px" }
+    ],
+    derived: [ { label:"Used by", render: function(r){
+        var ms = RM.marketsForRule(r.num);
+        if (!ms.length) return "<span class='no'>no market</span>";
+        return ms.map(function(c){ return "<span class='rulechip'>"+esc(c)+"</span>"; }).join("");
+      } } ],
+    blank: function(){ return { num:"", attrs:"", threshold:"1 or more", timeframe:"1 day" }; }
+  },
+  markets: {
+    target: "rt-markets", count: "rc-markets", search: "rq-markets",
+    cols: [
+      { f:"code",   label:"Market", w:"80px", mono:true },
+      { f:"active", label:"Active", w:"90px",  yesno:true },
+      { f:"dryrun", label:"Dry run", w:"90px", yesno:true },
+      { f:"kyc",    label:"KYC docs", w:"95px", yesno:true },
+      { f:"bonus",  label:"Bonus removal", w:"115px", yesno:true },
+      { f:"rules",  label:"Active rules", mono:true }
+    ],
+    derived: [ { label:"Count", render: function(m){
+        return "<b>"+RM.parseRuleList(m.rules).length+"</b>"; } } ],
+    blank: function(){ return { code:"", active:"YES", dryrun:"NO", kyc:"NO", bonus:"YES", rules:"" }; }
+  },
+  dryruns: {
+    target: "rt-dry", count: "rc-dry", search: "rq-dry",
+    cols: [
+      { f:"date",       label:"Date", w:"105px" },
+      { f:"company",    label:"Market", w:"80px", mono:true },
+      { f:"num",        label:"Rule #", w:"70px", mono:true },
+      { f:"attrs",      label:"Attributes" },
+      { f:"threshold",  label:"Threshold", w:"105px" },
+      { f:"timeframe",  label:"Timeframe", w:"95px" },
+      { f:"activation", label:"Activation", w:"110px" },
+      { f:"status",     label:"Status", w:"85px" },
+      { f:"notes",      label:"Notes" }
+    ],
+    blank: function(){ return { date:today(), company:"", num:"", attrs:"", notes:"",
+                                threshold:"", timeframe:"", activation:"", status:"Active" }; }
+  },
+  deactivated: {
+    target: "rt-deact", count: "rc-deact", search: "rq-deact",
+    cols: [
+      { f:"name",   label:"Rule name", mono:true },
+      { f:"num",    label:"Rule #", w:"70px", mono:true },
+      { f:"market", label:"Market", w:"80px", mono:true },
+      { f:"date",   label:"Deactivated", w:"115px" },
+      { f:"notes",  label:"Notes" }
+    ],
+    blank: function(){ return { name:"", num:"", market:"", date:today(), notes:"" }; }
+  },
+  legacy: {
+    target: "rt-legacy", count: "rc-legacy", search: "rq-legacy",
+    cols: [
+      { f:"name", label:"Old Bot Terminator name", mono:true },
+      { f:"num",  label:"Rule #", w:"80px", mono:true }
+    ],
+    blank: function(){ return { name:"", num:"" }; }
+  }
+};
+
+function today(){
+  var d = new Date();
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+function yesno(v){
+  var s = String(v||"").toUpperCase();
+  if (s === "YES") return "<span class='yes'>YES</span>";
+  if (s === "NO")  return "<span class='no'>NO</span>";
+  return esc(v||"");
+}
+
+/* ---------- generic renderer ---------- */
+function renderRTable(key){
+  var def = RTABLES[key], data = RM.state()[key];
+  var q = ($(def.search) ? $(def.search).value.trim().toLowerCase() : "");
+  var extraFilter = null;
+  if (key === "rules" && $("rf-market") && $("rf-market").value){
+    var mk = $("rf-market").value;
+    extraFilter = function(r){ return RM.marketsForRule(r.num).indexOf(mk) !== -1; };
+  }
+  if (key === "markets" && $("rf-active") && $("rf-active").value){
+    var want = $("rf-active").value;
+    extraFilter = function(m){ return String(m.active).toUpperCase() === want; };
+  }
+
+  var idx = [];
+  for (var i = 0; i < data.length; i++){
+    var row = data[i];
+    if (extraFilter && !extraFilter(row)) continue;
+    if (q){
+      var hay = def.cols.map(function(c){ return row[c.f]; }).join(" ").toLowerCase();
+      if (hay.indexOf(q) === -1) continue;
+    }
+    idx.push(i);
+  }
+
+  var h = "<thead><tr>";
+  def.cols.forEach(function(c){
+    h += "<th"+(c.w?" style='width:"+c.w+"'":"")+">"+esc(c.label)+"</th>";
+  });
+  (def.derived||[]).forEach(function(d){ h += "<th>"+esc(d.label)+"</th>"; });
+  h += "<th style='width:1%'></th></tr></thead><tbody>";
+
+  if (EDIT.table === key && EDIT.isNew) h += editorRow(key, null, -1);
+
+  idx.forEach(function(i){
+    var row = data[i];
+    if (EDIT.table === key && EDIT.index === i && !EDIT.isNew){
+      h += editorRow(key, row, i);
+      return;
+    }
+    h += "<tr>";
+    def.cols.forEach(function(c){
+      var v = row[c.f];
+      var cell = c.yesno ? yesno(v) : esc(v);
+      h += "<td"+(c.mono?" class='m'":"")+">"+cell+"</td>";
+    });
+    (def.derived||[]).forEach(function(d){ h += "<td>"+d.render(row)+"</td>"; });
+    h += "<td class='act'>"+
+         "<button class='mini' data-edit='"+key+"' data-i='"+i+"'>Edit</button>"+
+         "<button class='mini danger' data-del='"+key+"' data-i='"+i+"'>&times;</button></td></tr>";
+  });
+
+  h += "</tbody>";
+  $(def.target).innerHTML = h;
+  if ($(def.count)){
+    $(def.count).innerHTML = "<b>"+idx.length+"</b> of <b>"+data.length+"</b> rows";
+  }
+}
+
+function editorRow(key, row, i){
+  var def = RTABLES[key];
+  var vals = row || def.blank();
+  var h = "<tr class='editing'>";
+  def.cols.forEach(function(c){
+    h += "<td><input class='cell' data-f='"+c.f+"' value='"+esc(vals[c.f]||"")+"'></td>";
+  });
+  (def.derived||[]).forEach(function(){ h += "<td></td>"; });
+  h += "<td class='act'><button class='mini' data-save='"+key+"' data-i='"+i+"'>Save</button>"+
+       "<button class='mini' data-cancel='1'>Cancel</button></td></tr>";
+
+  if (key === "rules") h += marketPickerRow(vals, def.cols.length + (def.derived||[]).length + 1);
+  return h;
+}
+
+/* Which markets should be pre-checked when a rule editor opens: whatever
+   already runs that rule number (nothing, for a brand-new rule). */
+function marketPickerRow(ruleVals, colspan){
+  var checked = ruleVals.num !== "" ? RM.marketsForRule(ruleVals.num) : [];
+  var boxes = RM.state().markets.map(function(m){
+    var on = checked.indexOf(m.code) !== -1;
+    return "<label><input type='checkbox' class='mk-pick' value='"+esc(m.code)+"'"+
+           (on ? " checked" : "") + ">"+esc(m.code)+"</label>";
+  }).join("");
+  return "<tr class='marketpicker'><td colspan='"+colspan+"'><div class='inner'>"+
+         "<div class='label'>Markets running this rule</div>"+
+         "<div class='marketgrid'>"+boxes+"</div>"+
+         "<div class='hint'>Tick every market that should run this rule, then Save. Unticking removes it from that market\'s active list.</div>"+
+         "</div></td></tr>";
+}
+
+/* ---------- overview ---------- */
+function renderRulesOverview(){
+  var st = RM.stats();
+  $("r-figs").innerHTML =
+    fig(st.rules, "rules defined") +
+    fig(st.markets, "markets") +
+    fig(st.activeMarkets, "active", "good") +
+    fig(st.inactiveMarkets, "not active", st.inactiveMarkets?"alarm":"") +
+    fig(st.dryruns, "dry runs") +
+    fig(st.deactivated, "deactivations");
+
+  var warn = "";
+  var orphans = RM.orphanRuleNumbers();
+  if (orphans.length){
+    warn += "<div class='warnbox'><b>"+orphans.length+" rule number"+(orphans.length>1?"s":"")+
+      " referenced by a market but not defined in the Rules table:</b> "+orphans.join(", ")+
+      ". Either add the definition or remove the number from those markets.</div>";
+  }
+  var unused = RM.unusedRules();
+  if (unused.length){
+    warn += "<div class='warnbox'>"+unused.length+" rule"+(unused.length>1?"s are":" is")+
+      " defined but not switched on for any market: "+
+      unused.map(function(r){ return "rule "+esc(r.num); }).join(", ")+".</div>";
+  }
+  if (!warn) warn = "<div class='okbox'>No inconsistencies found between the rules and the market configuration.</div>";
+  $("r-checks").innerHTML = warn;
+  renderBanner();
+}
+
+function renderBanner(){
+  var n = RM.dirty();
+  var html = n ? "<div class='banner'><b>"+n+" unsaved change"+(n>1?"s":"")+"</b>"+
+    "<span>Nothing is written back automatically — download the workbook and put it on the shared drive.</span>"+
+    "<span class='spacer'><button class='btn' data-export='1'>Download updated workbook</button></span></div>" : "";
+  ["r-banner","r-banner2"].forEach(function(id){ if ($(id)) $(id).innerHTML = html; });
+}
+
+function fillMarketFilter(){
+  var sel = $("rf-market");
+  if (!sel) return;
+  var keep = sel.value;
+  sel.innerHTML = "<option value=''>Any</option>";
+  RM.state().markets.forEach(function(m){
+    var o = document.createElement("option");
+    o.value = m.code; o.textContent = m.code;
+    sel.appendChild(o);
+  });
+  if (keep) sel.value = keep;
+}
+
+function renderAllRules(){
+  fillMarketFilter();
+  renderRulesOverview();
+  ["rules","markets","dryruns","deactivated","legacy"].forEach(renderRTable);
+  refreshTallies();
+}
+
+/* ---------- events ---------- */
+document.addEventListener("click", function(e){
+  var t = e.target;
+  if (t.closest("[data-export]")) { exportRules(); return; }
+
+  var ed = t.closest("[data-edit]");
+  if (ed){ EDIT = { table: ed.getAttribute("data-edit"), index: +ed.getAttribute("data-i"), isNew:false };
+           renderRTable(EDIT.table); return; }
+
+  var del = t.closest("[data-del]");
+  if (del){
+    var k = del.getAttribute("data-del"), i = +del.getAttribute("data-i");
+    var row = RM.state()[k][i];
+    var label = row.code || row.num || row.name || "this row";
+    if (confirm("Delete "+label+"?")){
+      RM.deleteRow(k, i);
+      EDIT = { table:null, index:-1, isNew:false };
+      renderAllRules();
+    }
+    return;
+  }
+
+  var sv = t.closest("[data-save]");
+  if (sv){
+    var key = sv.getAttribute("data-save"), at = +sv.getAttribute("data-i");
+    var tr = sv.closest("tr");
+    var obj = RTABLES[key].blank();
+    Array.prototype.forEach.call(tr.querySelectorAll("input.cell"), function(inp){
+      obj[inp.getAttribute("data-f")] = inp.value.trim();
+    });
+
+    if (key === "rules"){
+      var pickerRow = tr.nextElementSibling;   // the .marketpicker row rendered right after the editor
+      if (pickerRow && pickerRow.classList.contains("marketpicker") && obj.num !== ""){
+        var picked = {};
+        Array.prototype.forEach.call(pickerRow.querySelectorAll("input.mk-pick:checked"), function(cb){
+          picked[cb.value] = true;
+        });
+        RM.state().markets.forEach(function(m){
+          RM.setRuleForMarket(m.code, obj.num, !!picked[m.code]);
+        });
+      }
+    }
+
+    if (at === -1) RM.addRow(key, obj); else RM.updateRow(key, at, obj);
+    EDIT = { table:null, index:-1, isNew:false };
+    renderAllRules();
+    return;
+  }
+
+  if (t.closest("[data-cancel]")){
+    var was = EDIT.table;
+    EDIT = { table:null, index:-1, isNew:false };
+    if (was) renderRTable(was);
+    return;
+  }
+
+  var add = t.closest("[data-add]");
+  if (add){
+    EDIT = { table: add.getAttribute("data-add"), index:-1, isNew:true };
+    renderRTable(EDIT.table);
+    return;
+  }
+});
+
+/* search + filter inputs */
+["rq-rules","rq-markets","rq-dry","rq-deact","rq-legacy"].forEach(function(id){
+  var map = { "rq-rules":"rules","rq-markets":"markets","rq-dry":"dryruns",
+              "rq-deact":"deactivated","rq-legacy":"legacy" };
+  var el = document.getElementById(id);
+  if (el) el.addEventListener("input", function(){ renderRTable(map[id]); });
+});
+if ($("rf-market")) $("rf-market").addEventListener("change", function(){ renderRTable("rules"); });
+if ($("rf-active")) $("rf-active").addEventListener("change", function(){ renderRTable("markets"); });
+
+/* add buttons */
+[["r-add-rule","rules"],["r-add-market","markets"],["r-add-dry","dryruns"],
+ ["r-add-deact","deactivated"],["r-add-legacy","legacy"]].forEach(function(p){
+  var el = $(p[0]);
+  if (el) el.setAttribute("data-add", p[1]);
+});
+
+/* ---------- export / import / revert ---------- */
+async function exportRules(){
+  var btn = $("r-export");
+  if (btn) { btn.disabled = true; btn.textContent = "Building…"; }
+  try {
+    var bytes = await XlsxWriter.buildAsync(RM.buildSheets());
+    saveBlob(new Blob([bytes], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),
+             "Bot_Terminator_Rules-Dry_Runs_Sheet_" + today().replace(/-/g,"") + ".xlsx");
+    RM.resetDirty();
+    renderAllRules();
+    $("r-note").textContent = "Saved. Put it on the shared drive to replace the current master.";
+  } catch (err) {
+    $("r-note").textContent = "Could not build the workbook: " + (err && err.message ? err.message : err);
+  }
+  if (btn) { btn.disabled = false; btn.textContent = "Download updated workbook"; }
+}
+
+if ($("r-export")) $("r-export").addEventListener("click", exportRules);
+if ($("r-import")) $("r-import").addEventListener("click", function(){ $("r-file").click(); });
+if ($("r-revert")) $("r-revert").addEventListener("click", function(){
+  if (RM.dirty() && !confirm("Discard "+RM.dirty()+" unsaved change(s)?")) return;
+  RM.init(LOADED_SNAPSHOT);
+  renderAllRules();
+  $("r-note").textContent = "Reverted to the last loaded version.";
+});
+
+if ($("r-file")) $("r-file").addEventListener("change", function(e){
+  var f = e.target.files[0];
+  if (!f) return;
+  var fr = new FileReader();
+  fr.onload = function(){
+    XlsxReader.read(fr.result).then(function(wb){
+      var data = RM.fromWorkbook(wb);
+      RM.init(data);
+      LOADED_SNAPSHOT = JSON.parse(JSON.stringify(data));
+      $("r-src").textContent = f.name;
+      $("r-note").textContent = "Loaded " + data.rules.length + " rules and " +
+                                data.markets.length + " markets from " + f.name + ".";
+      renderAllRules();
+    }).catch(function(err){
+      $("r-note").textContent = "Could not read that file: " + (err && err.message ? err.message : err);
+    });
+  };
+  fr.onerror = function(){ $("r-note").textContent = "Could not read that file."; };
+  fr.readAsArrayBuffer(f);
+  e.target.value = "";
+});
+
+/* don't let unsaved edits vanish silently */
+window.addEventListener("beforeunload", function(e){
+  if (window.RulesModule && RM.state() && RM.dirty()){
+    e.preventDefault();
+    e.returnValue = "";
+  }
+});
+
+/* boot */
+renderNav();
+
+
+</script>
+</body>
+</html>
